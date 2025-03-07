@@ -1,0 +1,5 @@
+C:\C# Project\VoiceMacroProject\obj\Debug\net9.0-windows\VoiceMacro.csproj.AssemblyReference.cache
+C:\C# Project\VoiceMacroProject\obj\Debug\net9.0-windows\VoiceMacro.GeneratedMSBuildEditorConfig.editorconfig
+C:\C# Project\VoiceMacroProject\obj\Debug\net9.0-windows\VoiceMacro.AssemblyInfoInputs.cache
+C:\C# Project\VoiceMacroProject\obj\Debug\net9.0-windows\VoiceMacro.AssemblyInfo.cs
+C:\C# Project\VoiceMacroProject\obj\Debug\net9.0-windows\VoiceMacro.csproj.CoreCompileInputs.cache

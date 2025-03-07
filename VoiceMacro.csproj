@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.1.0" />
+    <PackageReference Include="System.Speech" Version="9.0.2" />
+    <PackageReference Include="Whisper.net" Version="1.4.7" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.4.7" />
+    <PackageReference Include="InputSimulator" Version="1.0.4" />
+    <PackageReference Include="OpenAI" Version="1.7.2" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+</Project> 
