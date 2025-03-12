@@ -1,0 +1,2 @@
+C:\C# Project\VoiceMacroProject\publish\self-contained\VoiceMacro.pdb
+C:\C# Project\VoiceMacroProject\publish\self-contained\VoiceMacro.exe

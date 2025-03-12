@@ -102,7 +102,7 @@ namespace VoiceMacro
         {
             this.SuspendLayout();
             
-            // 툴크 초기화
+            // 툴팁 초기화
             this.toolTip = new ToolTip();
             this.toolTip.AutoPopDelay = 5000;
             this.toolTip.InitialDelay = 1000;
@@ -111,10 +111,12 @@ namespace VoiceMacro
             // MainForm
             this.AutoScaleDimensions = new System.Drawing.SizeF(7F, 15F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1000, 700);
-            this.MinimumSize = new Size(900, 650);
+            this.ClientSize = new System.Drawing.Size(1200, 800);
+            this.MinimumSize = new Size(1000, 700);
             this.Name = "MainForm";
             this.Text = "음성 매크로";
+            this.BackColor = Color.FromArgb(248, 248, 248);
+            this.Padding = new Padding(15);
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.MainForm_FormClosing);
             this.Load += new System.EventHandler(this.MainForm_Load);
             this.Resize += new System.EventHandler(this.MainForm_Resize);
@@ -122,49 +124,64 @@ namespace VoiceMacro
             // 상단 컨트롤 패널 (고정 높이)
             Panel topPanel = new Panel();
             topPanel.Dock = DockStyle.Top;
-            topPanel.Height = 80;
+            topPanel.Height = 100;
             topPanel.BackColor = Color.FromArgb(240, 240, 240);
-            topPanel.Padding = new Padding(10);
+            topPanel.Padding = new Padding(15);
             
             // 컨트롤 그룹 (상단 패널)
             GroupBox controlGroup = new GroupBox();
-            controlGroup.Text = "컨트롤";
-            controlGroup.Location = new Point(10, 5);
-            controlGroup.Size = new Size(650, 70);
-            controlGroup.Padding = new Padding(5);
+            controlGroup.Text = "음성 인식 컨트롤";
+            controlGroup.Location = new Point(15, 10);
+            controlGroup.Size = new Size(820, 80);
+            controlGroup.Padding = new Padding(10);
+            controlGroup.Font = new Font(this.Font, FontStyle.Regular);
+            controlGroup.BackColor = Color.FromArgb(245, 245, 245);
+            controlGroup.ForeColor = Color.FromArgb(80, 80, 80);
             
             // 시작/중지 버튼
             this.btnStartStop = new Button();
             this.btnStartStop.Location = new Point(20, 25);
-            this.btnStartStop.Size = new Size(120, 30);
+            this.btnStartStop.Size = new Size(130, 40);
             this.btnStartStop.Text = "시작";
             this.btnStartStop.BackColor = Color.LightGreen;
+            this.btnStartStop.FlatStyle = FlatStyle.Flat;
+            this.btnStartStop.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
             this.btnStartStop.Font = new Font(this.Font, FontStyle.Bold);
+            this.btnStartStop.TabIndex = 0;
             this.btnStartStop.Click += new EventHandler(this.btnStartStop_Click);
             controlGroup.Controls.Add(this.btnStartStop);
             
             // 설정 버튼
             this.btnSettings = new Button();
-            this.btnSettings.Location = new Point(160, 25);
-            this.btnSettings.Size = new Size(120, 30);
+            this.btnSettings.Location = new Point(170, 25);
+            this.btnSettings.Size = new Size(130, 40);
             this.btnSettings.Text = "설정";
+            this.btnSettings.FlatStyle = FlatStyle.Flat;
+            this.btnSettings.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            this.btnSettings.TabIndex = 1;
             this.btnSettings.Click += new EventHandler(this.btnSettings_Click);
             controlGroup.Controls.Add(this.btnSettings);
             
             // 프리셋 버튼
             this.btnPresets = new Button();
-            this.btnPresets.Location = new Point(300, 25);
-            this.btnPresets.Size = new Size(120, 30);
+            this.btnPresets.Location = new Point(320, 25);
+            this.btnPresets.Size = new Size(130, 40);
             this.btnPresets.Text = "프리셋";
+            this.btnPresets.FlatStyle = FlatStyle.Flat;
+            this.btnPresets.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            this.btnPresets.TabIndex = 2;
             this.btnPresets.Click += new EventHandler(this.btnPresets_Click);
             controlGroup.Controls.Add(this.btnPresets);
             
             // 알림음 버튼 추가
             this.chkPlayBeep = new Button();
-            this.chkPlayBeep.Location = new Point(440, 25);
-            this.chkPlayBeep.Size = new Size(120, 30);
+            this.chkPlayBeep.Location = new Point(470, 25);
+            this.chkPlayBeep.Size = new Size(130, 40);
             this.chkPlayBeep.Text = "알림음: 켜짐";
             this.chkPlayBeep.BackColor = Color.LightSkyBlue;
+            this.chkPlayBeep.FlatStyle = FlatStyle.Flat;
+            this.chkPlayBeep.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            this.chkPlayBeep.TabIndex = 3;
             this.chkPlayBeep.Click += new EventHandler(this.ChkPlayBeep_Click);
             this.toolTip.SetToolTip(this.chkPlayBeep, "시스템 트레이에서 작동 중일 때 음성인식 성공 시 알림음 재생");
             controlGroup.Controls.Add(this.chkPlayBeep);
@@ -174,58 +191,64 @@ namespace VoiceMacro
             // 메인 콘텐츠 패널 (상단과 하단 사이)
             Panel contentPanel = new Panel();
             contentPanel.Dock = DockStyle.Fill;
-            contentPanel.Padding = new Padding(10);
+            contentPanel.Padding = new Padding(15);
             
             // 좌측 패널 생성 (로그 영역)
             Panel leftPanel = new Panel();
             leftPanel.Dock = DockStyle.Left;
-            leftPanel.Width = 300;
-            leftPanel.Padding = new Padding(0, 0, 10, 0); // 오른쪽에 패딩 추가
+            leftPanel.Width = 350;
+            leftPanel.Padding = new Padding(0, 0, 15, 0);
             
             // 로그 그룹
             GroupBox logGroup = new GroupBox();
             logGroup.Text = "로그";
             logGroup.Dock = DockStyle.Fill;
-            logGroup.Padding = new Padding(10);
+            logGroup.Padding = new Padding(15);
+            logGroup.BackColor = Color.FromArgb(245, 245, 245);
+            logGroup.Font = new Font(this.Font, FontStyle.Regular);
+            logGroup.ForeColor = Color.FromArgb(80, 80, 80);
             leftPanel.Controls.Add(logGroup);
             
             // 로그 텍스트 박스
             this.rtbLog = new RichTextBox();
-            this.rtbLog.Dock = DockStyle.Top;
-            this.rtbLog.Height = 520;
+            this.rtbLog.Dock = DockStyle.Fill;
             this.rtbLog.ReadOnly = true;
             this.rtbLog.BackColor = Color.White;
-            this.rtbLog.Font = new Font("Consolas", 9F);
+            this.rtbLog.Font = new Font("Consolas", 9.5F);
+            this.rtbLog.BorderStyle = BorderStyle.Fixed3D;
             this.rtbLog.ScrollBars = RichTextBoxScrollBars.Vertical;
             logGroup.Controls.Add(this.rtbLog);
             
             // 로그 컨트롤 패널
             Panel logControlPanel = new Panel();
             logControlPanel.Dock = DockStyle.Bottom;
-            logControlPanel.Height = 40;
+            logControlPanel.Height = 50;
+            logControlPanel.Padding = new Padding(5);
             logGroup.Controls.Add(logControlPanel);
             
             // 로그 컨트롤 버튼 및 체크박스
             this.btnClearLog = new Button();
             this.btnClearLog.Text = "로그 지우기";
-            this.btnClearLog.Location = new Point(5, 5);
-            this.btnClearLog.Size = new Size(80, 25);
+            this.btnClearLog.Location = new Point(10, 10);
+            this.btnClearLog.Size = new Size(90, 30);
+            this.btnClearLog.FlatStyle = FlatStyle.Flat;
+            this.btnClearLog.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
             this.btnClearLog.Click += new EventHandler(this.BtnClearLog_Click);
             logControlPanel.Controls.Add(this.btnClearLog);
             
             // 자동 스크롤 체크박스
             this.chkAutoScroll = new CheckBox();
             this.chkAutoScroll.Text = "자동 스크롤";
-            this.chkAutoScroll.Location = new Point(90, 8);
-            this.chkAutoScroll.Size = new Size(85, 20);
+            this.chkAutoScroll.Location = new Point(110, 15);
+            this.chkAutoScroll.Size = new Size(95, 20);
             this.chkAutoScroll.Checked = true;
             logControlPanel.Controls.Add(this.chkAutoScroll);
             
             // 상세 로그 체크박스
             this.chkDetailedLog = new CheckBox();
             this.chkDetailedLog.Text = "상세 로그";
-            this.chkDetailedLog.Location = new Point(180, 8);
-            this.chkDetailedLog.Size = new Size(75, 20);
+            this.chkDetailedLog.Location = new Point(210, 15);
+            this.chkDetailedLog.Size = new Size(85, 20);
             this.chkDetailedLog.CheckedChanged += new EventHandler(this.ChkDetailedLog_CheckedChanged);
             logControlPanel.Controls.Add(this.chkDetailedLog);
            
@@ -239,30 +262,34 @@ namespace VoiceMacro
             GroupBox macroManageGroup = new GroupBox();
             macroManageGroup.Text = "매크로 관리";
             macroManageGroup.Dock = DockStyle.Fill;
-            macroManageGroup.Padding = new Padding(10);
+            macroManageGroup.Padding = new Padding(15);
+            macroManageGroup.BackColor = Color.FromArgb(245, 245, 245);
+            macroManageGroup.Font = new Font(this.Font, FontStyle.Regular);
+            macroManageGroup.ForeColor = Color.FromArgb(80, 80, 80);
             rightPanel.Controls.Add(macroManageGroup);
             
-            // 마이크 컨트롤 패널 (NEW)
+            // 마이크 컨트롤 패널
             Panel micControlPanel = new Panel();
             micControlPanel.Dock = DockStyle.Top;
-            micControlPanel.Height = 40;
-            micControlPanel.BackColor = Color.FromArgb(245, 245, 245); // 약간 회색 배경으로 구분
+            micControlPanel.Height = 50;
+            micControlPanel.BackColor = Color.FromArgb(245, 245, 245);
+            micControlPanel.Padding = new Padding(5);
             
             // 마이크 볼륨 레이블
             this.lblMicVolume = new Label();
             this.lblMicVolume.Text = "마이크 볼륨:";
-            this.lblMicVolume.Location = new Point(10, 12);
+            this.lblMicVolume.Location = new Point(10, 15);
             this.lblMicVolume.Size = new Size(80, 20);
             this.lblMicVolume.TextAlign = ContentAlignment.MiddleRight;
             micControlPanel.Controls.Add(this.lblMicVolume);
             
             // 마이크 볼륨 슬라이더
             this.tbarMicVolume = new TrackBar();
-            this.tbarMicVolume.Location = new Point(95, 5);
-            this.tbarMicVolume.Size = new Size(150, 30);
+            this.tbarMicVolume.Location = new Point(95, 10);
+            this.tbarMicVolume.Size = new Size(180, 30);
             this.tbarMicVolume.Minimum = 0;
             this.tbarMicVolume.Maximum = 100;
-            this.tbarMicVolume.Value = 100; // 기본값은 100%
+            this.tbarMicVolume.Value = 100;
             this.tbarMicVolume.TickFrequency = 10;
             this.tbarMicVolume.SmallChange = 1;
             this.tbarMicVolume.LargeChange = 10;
@@ -273,8 +300,8 @@ namespace VoiceMacro
             
             // 마이크 레벨 미터
             this.pbarMicLevel = new ColorProgressBar();
-            this.pbarMicLevel.Location = new Point(395, 12);
-            this.pbarMicLevel.Size = new Size(130, 15);
+            this.pbarMicLevel.Location = new Point(290, 15);
+            this.pbarMicLevel.Size = new Size(150, 15);
             this.pbarMicLevel.Minimum = 0;
             this.pbarMicLevel.Maximum = 100;
             this.toolTip.SetToolTip(this.pbarMicLevel, "현재 마이크 입력 레벨");
@@ -283,54 +310,80 @@ namespace VoiceMacro
             // 레벨 레이블 추가
             Label lblMicLevel = new Label();
             lblMicLevel.Text = "입력 레벨:";
-            lblMicLevel.Location = new Point(385, 12);
-            lblMicLevel.Size = new Size(130, 20);
+            lblMicLevel.Location = new Point(450, 15);
+            lblMicLevel.Size = new Size(80, 20);
             lblMicLevel.TextAlign = ContentAlignment.MiddleLeft;
             lblMicLevel.ForeColor = Color.Gray;
             micControlPanel.Controls.Add(lblMicLevel);
             
+            // 마이크 새로고침 버튼 추가
+            Button btnRefreshMic = new Button();
+            btnRefreshMic.Text = "🔄";
+            btnRefreshMic.Size = new Size(35, 30);
+            btnRefreshMic.Location = new Point(530, 10);
+            btnRefreshMic.BackColor = Color.WhiteSmoke;
+            btnRefreshMic.Font = new Font(btnRefreshMic.Font.FontFamily, 9);
+            btnRefreshMic.FlatStyle = FlatStyle.Flat;
+            btnRefreshMic.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            btnRefreshMic.Click += new EventHandler(BtnRefreshMic_Click);
+            this.toolTip.SetToolTip(btnRefreshMic, "마이크 디바이스 새로고침");
+            micControlPanel.Controls.Add(btnRefreshMic);
+            
             // 매크로 버튼 패널
             Panel macroButtonPanel = new Panel();
             macroButtonPanel.Dock = DockStyle.Top;
-            macroButtonPanel.Height = 40;
+            macroButtonPanel.Height = 50;
+            macroButtonPanel.Padding = new Padding(5);
             
             // 매크로 추가 버튼
             this.btnAddMacro = new Button();
-            this.btnAddMacro.Location = new Point(5, 5);
-            this.btnAddMacro.Size = new Size(120, 30);
+            this.btnAddMacro.Location = new Point(10, 5);
+            this.btnAddMacro.Size = new Size(130, 40);
             this.btnAddMacro.Text = "매크로 추가";
             this.btnAddMacro.BackColor = Color.LightBlue;
+            this.btnAddMacro.FlatStyle = FlatStyle.Flat;
+            this.btnAddMacro.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            this.btnAddMacro.TabIndex = 4;
             this.btnAddMacro.Click += new EventHandler(this.btnAddMacro_Click);
             macroButtonPanel.Controls.Add(this.btnAddMacro);
             
             // 매크로 삭제 버튼
             this.btnRemoveMacro = new Button();
-            this.btnRemoveMacro.Location = new Point(135, 5);
-            this.btnRemoveMacro.Size = new Size(120, 30);
+            this.btnRemoveMacro.Location = new Point(150, 5);
+            this.btnRemoveMacro.Size = new Size(130, 40);
             this.btnRemoveMacro.Text = "매크로 삭제";
+            this.btnRemoveMacro.FlatStyle = FlatStyle.Flat;
+            this.btnRemoveMacro.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            this.btnRemoveMacro.TabIndex = 7;
             this.btnRemoveMacro.Click += new EventHandler(this.btnRemoveMacro_Click);
             macroButtonPanel.Controls.Add(this.btnRemoveMacro);
             
             // 매크로 복사 버튼
             this.btnCopyMacro = new Button();
-            this.btnCopyMacro.Location = new Point(265, 5);
-            this.btnCopyMacro.Size = new Size(120, 30);
+            this.btnCopyMacro.Location = new Point(290, 5);
+            this.btnCopyMacro.Size = new Size(130, 40);
             this.btnCopyMacro.Text = "매크로 복사";
+            this.btnCopyMacro.FlatStyle = FlatStyle.Flat;
+            this.btnCopyMacro.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            this.btnCopyMacro.TabIndex = 6;
             this.btnCopyMacro.Click += new EventHandler(this.btnCopyMacro_Click);
             macroButtonPanel.Controls.Add(this.btnCopyMacro);
             
             // 매크로 수정 버튼
             this.btnEditMacro = new Button();
-            this.btnEditMacro.Location = new Point(395, 5);
-            this.btnEditMacro.Size = new Size(120, 30);
+            this.btnEditMacro.Location = new Point(430, 5);
+            this.btnEditMacro.Size = new Size(130, 40);
             this.btnEditMacro.Text = "매크로 수정";
+            this.btnEditMacro.FlatStyle = FlatStyle.Flat;
+            this.btnEditMacro.FlatAppearance.BorderColor = Color.FromArgb(180, 180, 180);
+            this.btnEditMacro.TabIndex = 5;
             this.btnEditMacro.Click += new EventHandler(this.btnEditMacro_Click);
             macroButtonPanel.Controls.Add(this.btnEditMacro);
             
             // 10포인트 상단 공간을 위한 패널 추가
             Panel macroTopSpacePanel = new Panel();
             macroTopSpacePanel.Dock = DockStyle.Top;
-            macroTopSpacePanel.Height = 10;
+            macroTopSpacePanel.Height = 15;
             
             // 매크로 목록
             this.lstMacros = new ListView();
@@ -340,12 +393,22 @@ namespace VoiceMacro
             this.lstMacros.HideSelection = false;
             this.lstMacros.GridLines = true;
             this.lstMacros.BackColor = Color.White;
+            this.lstMacros.BorderStyle = BorderStyle.Fixed3D;
+            this.lstMacros.Font = new Font(this.Font.FontFamily, 9.5F);
             
             // 열 추가
-            this.lstMacros.Columns.Add("키워드", 150);
-            this.lstMacros.Columns.Add("키 동작", 150);
-            this.lstMacros.Columns.Add("액션 타입", 100);
-            this.lstMacros.Columns.Add("파라미터", 150);
+            this.lstMacros.Columns.Add("키워드", 180);
+            this.lstMacros.Columns.Add("키 동작", 180);
+            this.lstMacros.Columns.Add("액션 타입", 120);
+            this.lstMacros.Columns.Add("파라미터", 200);
+            
+            // 대체 행 색상 설정을 위한 이벤트 추가
+            this.lstMacros.DrawItem += (s, e) => {
+                if (e.ItemIndex % 2 == 1)
+                {
+                    e.Item.BackColor = Color.FromArgb(248, 248, 248);
+                }
+            };
             
             // 컨트롤을 추가하는 순서가 중요합니다 - Fill이 가장 먼저, 그 다음 순서대로 추가해야합니다
             macroManageGroup.Controls.Add(this.lstMacros);      // Fill - 가장 먼저 추가
@@ -355,8 +418,13 @@ namespace VoiceMacro
             
             // 상태 표시줄
             this.statusStrip = new StatusStrip();
+            this.statusStrip.BackColor = Color.FromArgb(240, 240, 240);
+            this.statusStrip.SizingGrip = false;
+            this.statusStrip.Padding = new Padding(2, 0, 15, 0);
+            
             this.statusLabel = new ToolStripStatusLabel();
             this.statusLabel.Text = "준비";
+            this.statusLabel.Font = new Font(this.Font, FontStyle.Regular);
             this.statusStrip.Items.Add(this.statusLabel);
             
             // 패널들을 컨텐츠 패널에 추가 (순서 중요)
@@ -692,6 +760,34 @@ namespace VoiceMacro
             
             // 마이크 레벨 이벤트 처리
             voiceRecognizer.AudioLevelChanged += VoiceRecognizer_AudioLevelChanged;
+            
+            // 시작 시 시스템 마이크 볼륨 가져와서 슬라이더에 반영
+            try
+            {
+                var audioService = voiceRecognizer.GetAudioRecordingService();
+                if (audioService != null)
+                {
+                    float currentVolume = audioService.GetMicrophoneVolume();
+                    // UI 스레드에서 실행되도록 Invoke 사용
+                    if (tbarMicVolume != null && tbarMicVolume.InvokeRequired)
+                    {
+                        tbarMicVolume.Invoke(new Action(() => 
+                        {
+                            tbarMicVolume.Value = (int)(currentVolume * 100);
+                        }));
+                    }
+                    else if (tbarMicVolume != null)
+                    {
+                        tbarMicVolume.Value = (int)(currentVolume * 100);
+                    }
+                    
+                    AddLogMessage($"시스템 마이크 볼륨: {currentVolume * 100:F0}%", LogMessageType.Info);
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLogMessage($"마이크 볼륨 초기화 오류: {ex.Message}", LogMessageType.Error);
+            }
         }
 
         private void MainForm_Load(object sender, EventArgs e)
@@ -1236,7 +1332,29 @@ namespace VoiceMacro
                     var audioRecordingService = voiceRecognizer.GetAudioRecordingService();
                     if (audioRecordingService != null)
                     {
-                        audioRecordingService.SetMicrophoneVolume(volume);
+                        // 시스템 볼륨 설정 시도
+                        Task.Run(() => 
+                        {
+                            try 
+                            {
+                                audioRecordingService.SetMicrophoneVolume(volume);
+                            }
+                            catch (Exception ex)
+                            {
+                                // UI 스레드에서 로그 메시지 추가
+                                this.Invoke(new Action(() => 
+                                {
+                                    AddLogMessage($"마이크 볼륨 설정 오류: {ex.Message}", LogMessageType.Error);
+                                }));
+                            }
+                        });
+                        
+                        // 슬라이더 색상 변경으로 볼륨 시각화
+                        UpdateVolumeSliderColor(volume);
+                    }
+                    else
+                    {
+                        AddLogMessage("오디오 레코딩 서비스에 접근할 수 없습니다.", LogMessageType.Error);
                     }
                 }
             }
@@ -1244,6 +1362,95 @@ namespace VoiceMacro
             {
                 AddLogMessage($"마이크 볼륨 설정 오류: {ex.Message}", LogMessageType.Error);
             }
+        }
+
+        /// <summary>
+        /// 볼륨 슬라이더의 색상을 볼륨 레벨에 따라 업데이트합니다.
+        /// </summary>
+        private void UpdateVolumeSliderColor(float volume)
+        {
+            try
+            {
+                // 윈도우 슬라이더 컨트롤은 직접 색상 변경이 어려우므로
+                // 대신 툴팁을 업데이트하고 볼륨 레벨을 표시
+                string volumeText;
+                if (volume < 0.3f)
+                {
+                    volumeText = "낮음";
+                }
+                else if (volume < 0.7f)
+                {
+                    volumeText = "중간";
+                }
+                else
+                {
+                    volumeText = "높음";
+                }
+                
+                this.toolTip.SetToolTip(this.tbarMicVolume, $"마이크 볼륨: {volume * 100:F0}% ({volumeText})");
+            }
+            catch
+            {
+                // 색상 업데이트 실패 시 무시
+            }
+        }
+
+        /// <summary>
+        /// 마이크 디바이스를 새로고침합니다.
+        /// </summary>
+        private void RefreshMicrophoneDevices()
+        {
+            try
+            {
+                if (voiceRecognizer != null)
+                {
+                    var audioService = voiceRecognizer.GetAudioRecordingService();
+                    if (audioService != null)
+                    {
+                        audioService.RefreshAudioDevices();
+                        
+                        // 현재 볼륨 가져와서 슬라이더에 반영
+                        float currentVolume = audioService.GetMicrophoneVolume();
+                        tbarMicVolume.Value = (int)(currentVolume * 100);
+                        
+                        // 마이크 목록 가져오기
+                        var microphoneList = audioService.GetAvailableMicrophones();
+                        string micListText = string.Join(", ", microphoneList);
+                        
+                        AddLogMessage($"사용 가능한 마이크: {micListText}", LogMessageType.Info);
+                        AddLogMessage($"마이크 디바이스 새로고침 완료. 현재 볼륨: {currentVolume * 100:F0}%", LogMessageType.Info);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLogMessage($"마이크 디바이스 새로고침 실패: {ex.Message}", LogMessageType.Error);
+            }
+        }
+
+        /// <summary>
+        /// 마이크 새로고침 버튼 클릭 이벤트 핸들러
+        /// </summary>
+        private void BtnRefreshMic_Click(object sender, EventArgs e)
+        {
+            AddLogMessage("마이크 디바이스 새로고침 중...", LogMessageType.Info);
+            
+            // 백그라운드에서 마이크 새로고침 실행
+            Task.Run(() => 
+            {
+                try
+                {
+                    RefreshMicrophoneDevices();
+                }
+                catch (Exception ex)
+                {
+                    // UI 스레드에서 로그 메시지 추가
+                    this.Invoke(new Action(() => 
+                    {
+                        AddLogMessage($"마이크 새로고침 오류: {ex.Message}", LogMessageType.Error);
+                    }));
+                }
+            });
         }
     }
 } 
