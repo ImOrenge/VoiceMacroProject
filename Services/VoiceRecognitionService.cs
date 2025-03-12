@@ -148,62 +148,155 @@ namespace VoiceMacro.Services
 
             try
             {
-                cancellationTokenSource?.Cancel();
-                cancellationTokenSource?.Dispose();
-                cancellationTokenSource = null;
-                isListening = false;
+                isListening = false;  // 먼저 상태를 변경하여 ListenContinuouslyAsync의 루프가 중단되도록 함
+                
+                // CancellationTokenSource 정리
+                if (cancellationTokenSource != null)
+                {
+                    try
+                    {
+                        if (!cancellationTokenSource.IsCancellationRequested)
+                        {
+                            try
+                            {
+                                cancellationTokenSource.Cancel();
+                            }
+                            catch (ObjectDisposedException)
+                            {
+                                // 이미 Dispose된 경우 무시
+                            }
+                            catch (Exception ex)
+                            {
+                                // 다른 예외도 무시하고 로그만 남김
+                                System.Diagnostics.Debug.WriteLine($"CancellationToken 취소 중 오류: {ex.Message}");
+                            }
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        // IsCancellationRequested 접근 오류 무시
+                    }
+                    
+                    try
+                    {
+                        cancellationTokenSource.Dispose();
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // 이미 Dispose된 경우 무시
+                    }
+                    catch (Exception ex)
+                    {
+                        // 다른 예외도 무시하고 로그만 남김
+                        System.Diagnostics.Debug.WriteLine($"CancellationTokenSource 해제 중 오류: {ex.Message}");
+                    }
+                    
+                    cancellationTokenSource = null;
+                }
+                
                 OnStatusChanged("음성 인식 중지됨");
             }
             catch (Exception ex)
             {
                 OnStatusChanged($"음성 인식 중지 오류: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"StopListening 완료 중 오류: {ex.Message}");
             }
         }
 
         private async Task ListenContinuouslyAsync(CancellationToken cancellationToken)
         {
-            while (!cancellationToken.IsCancellationRequested && isListening)
+            try
             {
-                try
+                while (!cancellationToken.IsCancellationRequested && isListening)
                 {
-                    // 설정에 따라 음성 인식 방식 선택
-                    string? recognizedText = null;
-                    
-                    if (settings.UseLocalVoiceRecognition)
+                    try
                     {
-                        // 로컬 Whisper 모델 사용
-                        byte[] audioData = await audioRecorder.RecordSpeechAsync(cancellationToken);
-                        recognizedText = await localWhisperProcessor.ProcessAudioAsync(audioData, settings.WhisperLanguage, cancellationToken);
+                        // 설정에 따라 음성 인식 방식 선택
+                        string? recognizedText = null;
+                        
+                        if (settings.UseLocalVoiceRecognition)
+                        {
+                            try
+                            {
+                                // 로컬 Whisper 모델 사용
+                                byte[] audioData = await audioRecorder.RecordSpeechAsync(cancellationToken);
+                                if (audioData.Length > 0)
+                                {
+                                    recognizedText = await localWhisperProcessor.ProcessAudioAsync(audioData, settings.WhisperLanguage, cancellationToken);
+                                }
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                // 작업이 취소된 경우 (정상적인 종료) - 루프 중단
+                                break;
+                            }
+                        }
+                        else if (settings.UseOpenAI && openAIService != null)
+                        {
+                            try
+                            {
+                                // OpenAI API 사용
+                                byte[] audioData = await audioRecorder.RecordSpeechAsync(cancellationToken);
+                                if (audioData.Length > 0)
+                                {
+                                    recognizedText = await openAIService.TranscribeAudioAsync(audioData, settings.WhisperLanguage, cancellationToken);
+                                }
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                // 작업이 취소된 경우 (정상적인 종료) - 루프 중단
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            // 시스템 음성 인식 사용 (System.Speech)
+                            try
+                            {
+                                await Task.Delay(100, cancellationToken); // CPU 부하 방지용 지연
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                // 작업이 취소된 경우 (정상적인 종료) - 루프 중단
+                                break;
+                            }
+                            continue; // 음성 인식은 이벤트 기반으로 처리됨
+                        }
+                        
+                        if (!string.IsNullOrEmpty(recognizedText))
+                        {
+                            OnSpeechRecognized(recognizedText);
+                            macroService.ProcessVoiceCommand(recognizedText);
+                        }
                     }
-                    else if (settings.UseOpenAI && openAIService != null)
+                    catch (Exception ex)
                     {
-                        // OpenAI API 사용
-                        byte[] audioData = await audioRecorder.RecordSpeechAsync(cancellationToken);
-                        recognizedText = await openAIService.TranscribeAudioAsync(audioData, settings.WhisperLanguage, cancellationToken);
-                    }
-                    else
-                    {
-                        // 시스템 음성 인식 사용 (System.Speech)
-                        await Task.Delay(100, cancellationToken); // CPU 부하 방지용 지연
-                        continue; // 음성 인식은 이벤트 기반으로 처리됨
-                    }
-                    
-                    if (!string.IsNullOrEmpty(recognizedText))
-                    {
-                        OnSpeechRecognized(recognizedText);
-                        macroService.ProcessVoiceCommand(recognizedText);
+                        OnStatusChanged($"음성 인식 오류: {ex.Message}");
+                        try
+                        {
+                            await Task.Delay(1000, cancellationToken); // 오류 발생 시 잠시 대기
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // 작업이 취소된 경우 루프 중단
+                            break;
+                        }
                     }
                 }
-                catch (OperationCanceledException)
-                {
-                    // 취소 요청에 의한 종료는 정상 처리
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    OnStatusChanged($"음성 인식 오류: {ex.Message}");
-                    await Task.Delay(1000, cancellationToken); // 오류 발생 시 잠시 대기
-                }
+            }
+            catch (OperationCanceledException)
+            {
+                // 작업이 취소된 경우 (정상적인 종료)
+                OnStatusChanged("음성 인식이 취소되었습니다.");
+            }
+            catch (Exception ex)
+            {
+                OnStatusChanged($"음성 인식 중 오류: {ex.Message}");
+            }
+            finally
+            {
+                // 리스닝 상태 정리
+                isListening = false;
             }
         }
 
@@ -225,27 +318,70 @@ namespace VoiceMacro.Services
 
         public void Dispose()
         {
-            // 리소스 정리
-            StopListening();
-            cancellationTokenSource?.Dispose();
-            localWhisperProcessor?.Dispose();
-            audioRecorder?.Dispose();
-            recognizer?.Dispose();
+            try
+            {
+                // 리소스 정리
+                // 먼저 리스닝 중지
+                if (isListening)
+                {
+                    StopListening();
+                }
+                
+                // 각 리소스 정리 중 발생하는 예외를 개별적으로 처리
+                try
+                {
+                    if (cancellationTokenSource != null)
+                    {
+                        if (!cancellationTokenSource.IsCancellationRequested)
+                        {
+                            try { cancellationTokenSource.Cancel(); } catch { }
+                        }
+                        try { cancellationTokenSource.Dispose(); } catch { }
+                        cancellationTokenSource = null;
+                    }
+                }
+                catch { }
+                
+                try { localWhisperProcessor?.Dispose(); } catch { }
+                try { audioRecorder?.Dispose(); } catch { }
+                try { recognizer?.Dispose(); } catch { }
+            }
+            catch (Exception ex)
+            {
+                // 최종적으로 발생하는 모든 예외는 여기서 처리하고 로그만 남김
+                System.Diagnostics.Debug.WriteLine($"VoiceRecognitionService 해제 중 오류: {ex.Message}");
+            }
         }
 
         public async Task<string> RecognizeAudioAsync(byte[] audioData, string language = "ko")
         {
+            if (audioData == null || audioData.Length == 0)
+            {
+                OnStatusChanged("인식할 오디오 데이터가 없습니다.");
+                return string.Empty;
+            }
+            
             try
             {
-                if (settings.UseOpenAI && openAIService != null)
+                if (settings?.UseOpenAI == true && openAIService != null)
                 {
                     // OpenAI API로 음성 인식
-                    return await openAIService.TranscribeAudioAsync(audioData, language);
+                    string result = await openAIService.TranscribeAudioAsync(audioData, language ?? "ko");
+                    return result ?? string.Empty;
                 }
                 else
                 {
                     // 로컬 Whisper 모델로 음성 인식
-                    return await localWhisperProcessor.ProcessAudioAsync(audioData, language);
+                    if (localWhisperProcessor != null)
+                    {
+                        string result = await localWhisperProcessor.ProcessAudioAsync(audioData, language ?? "ko");
+                        return result ?? string.Empty;
+                    }
+                    else
+                    {
+                        OnStatusChanged("Whisper 프로세서가 초기화되지 않았습니다.");
+                        return string.Empty;
+                    }
                 }
             }
             catch (Exception ex)
@@ -257,32 +393,104 @@ namespace VoiceMacro.Services
 
         public bool HasMicrophone()
         {
-            return WaveInEvent.DeviceCount > 0;
+            try
+            {
+                return WaveInEvent.DeviceCount > 0;
+            }
+            catch (Exception ex)
+            {
+                OnStatusChanged($"마이크 감지 오류: {ex.Message}");
+                return false;
+            }
         }
 
         private class WhisperProcessor : IDisposable
         {
             private WhisperFactory? factory;
             private object? processor; // 동적 타입으로 처리
+            private bool isDisposed = false;
 
             public WhisperProcessor()
             {
                 // 사용 시점에 초기화
+                try
+                {
+                    // 초기화 로직 (필요시)
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"WhisperProcessor 초기화 오류: {ex.Message}");
+                }
             }
 
-            public Task<string> ProcessAudioAsync(byte[] audioData, string language = "ko", CancellationToken cancellationToken = default)
+            public async Task<string> ProcessAudioAsync(byte[] audioData, string language = "ko", CancellationToken cancellationToken = default)
             {
-                // 임시 구현 - 실제 Whisper 모델을 사용한 처리는 추후 구현
-                return Task.FromResult($"[Whisper 인식 결과 - {language}]");
+                if (isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(WhisperProcessor));
+                }
+                
+                if (audioData == null || audioData.Length == 0)
+                {
+                    return string.Empty;
+                }
+                
+                try
+                {
+                    // 임시 구현 - 실제 Whisper 모델을 사용한 처리는 추후 구현
+                    await Task.Delay(100, cancellationToken); // 비동기 작업 시뮬레이션
+                    return $"[Whisper 인식 결과 - {language ?? "ko"}]";
+                }
+                catch (OperationCanceledException)
+                {
+                    // 작업 취소 처리
+                    return string.Empty;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Whisper 처리 오류: {ex.Message}");
+                    return string.Empty;
+                }
             }
 
             public void Dispose()
             {
-                if (processor is IDisposable disposable)
+                if (isDisposed)
                 {
-                    disposable.Dispose();
+                    return;
                 }
-                factory?.Dispose();
+                
+                try
+                {
+                    // 리소스 정리
+                    if (processor != null)
+                    {
+                        // processor가 IDisposable을 구현한다면 Dispose 호출
+                        if (processor is IDisposable disposable)
+                        {
+                            disposable.Dispose();
+                        }
+                        processor = null;
+                    }
+                    
+                    if (factory != null)
+                    {
+                        // factory가 IDisposable을 구현한다면 Dispose 호출
+                        if (factory is IDisposable disposable)
+                        {
+                            disposable.Dispose();
+                        }
+                        factory = null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"WhisperProcessor 정리 중 오류: {ex.Message}");
+                }
+                finally
+                {
+                    isDisposed = true;
+                }
             }
         }
 
@@ -296,6 +504,15 @@ namespace VoiceMacro.Services
         protected virtual void OnStatusChanged(string status)
         {
             StatusChanged?.Invoke(this, status);
+        }
+
+        /// <summary>
+        /// AudioRecordingService 인스턴스를 반환합니다.
+        /// </summary>
+        /// <returns>AudioRecordingService 인스턴스</returns>
+        public AudioRecordingService GetAudioRecordingService()
+        {
+            return audioRecorder;
         }
     }
 } 

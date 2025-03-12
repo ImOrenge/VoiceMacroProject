@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
@@ -8,193 +7,133 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using System.IO;
-using NAudio.Wave;
 using VoiceMacro.Services;
 
 namespace VoiceMacro
 {
-    /// <summary>
-    /// 음성 매크로 추가를 위한 폼 클래스입니다.
-    /// 음성 녹음, 인식, 매크로 설정 기능을 제공합니다.
-    /// </summary>
     public partial class AddMacroForm : Form
     {
-        /// <summary>
-        /// 매크로의 음성 키워드입니다. 이 키워드가 인식되면 매크로가 실행됩니다.
-        /// </summary>
         public string Keyword { get; private set; }
-
-        /// <summary>
-        /// 매크로가 실행될 때 수행할 키보드 동작입니다.
-        /// </summary>
         public string KeyAction { get; private set; }
+        public MacroActionType SelectedActionType { get; private set; } = MacroActionType.Default;
+        public int SelectedActionParam { get; private set; } = 0;
+        public string OriginalKeyword { get; private set; }
 
-        /// <summary>
-        /// 애플리케이션 설정 정보를 담고 있는 객체입니다.
-        /// </summary>
         private readonly AppSettings settings;
-
-        /// <summary>
-        /// 오디오 녹음 기능을 제공하는 서비스입니다.
-        /// </summary>
         private readonly AudioRecordingService audioRecorder;
-
-        /// <summary>
-        /// OpenAI API를 사용한 음성 인식 서비스입니다.
-        /// </summary>
         private readonly OpenAIService openAIService;
-
-        /// <summary>
-        /// 음성 인식 서비스입니다.
-        /// </summary>
         private readonly VoiceRecognitionService voiceRecognitionService;
-
-        /// <summary>
-        /// 음성 키워드를 입력하는 텍스트박스입니다.
-        /// </summary>
         private TextBox txtKeyword;
-
-        /// <summary>
-        /// 키보드 동작을 입력하는 텍스트박스입니다.
-        /// </summary>
         private TextBox txtAction;
-
-        /// <summary>
-        /// 음성 녹음 시작/중지 버튼입니다.
-        /// </summary>
         private Button btnRecord;
-
-        /// <summary>
-        /// 녹음된 오디오를 파일로 저장하는 버튼입니다.
-        /// </summary>
-        private Button btnSaveAudio;
-
-        /// <summary>
-        /// 녹음 작업 취소를 위한 토큰 소스입니다.
-        /// </summary>
         private CancellationTokenSource cancellationTokenSource;
-
-        /// <summary>
-        /// 녹음 중 오디오 레벨을 시각적으로 표시하는 프로그레스 바입니다.
-        /// </summary>
         private ProgressBar progressRecording;
-
-        /// <summary>
-        /// 녹음 상태를 표시하는 레이블입니다.
-        /// </summary>
         private Label lblRecordingStatus;
-
-        /// <summary>
-        /// 현재 녹음 중인지 여부를 나타내는 플래그입니다.
-        /// </summary>
         private bool isRecording = false;
-
-        /// <summary>
-        /// 마지막으로 녹음된 오디오 데이터를 저장합니다.
-        /// </summary>
-        private byte[] lastRecordedAudio = null;
-
-        /// <summary>
-        /// 액션 타입 선택을 위한 콤보박스 추가
-        /// </summary>
+        
+        // 액션 타입 관련 컨트롤
         private ComboBox cmbActionType;
-        /// <summary>
-        /// 액션 파라미터 입력을 위한 텍스트 박스 추가
-        /// </summary>
-        private TextBox txtActionParam;
-        /// <summary>
-        /// 선택된 액션 타입 (기본값: Default)
-        /// </summary>
-        private MacroActionType selectedActionType = MacroActionType.Default;
-        /// <summary>
-        /// 선택된 액션 파라미터 (기본값: 0)
-        /// </summary>
-        private int selectedActionParam = 0;
+        private Label lblActionType;
+        private Label lblActionParam;
+        private NumericUpDown numActionParam;
+        private Label lblParamDescription;
         
-        /// <summary>
-        /// 편집 모드인지 여부
-        /// </summary>
-        private bool isEditMode = false;
+        // 키 버튼 관련 컨트롤
+        private Button btnCtrl;
+        private Button btnAlt;
+        private Button btnShift;
+        private Button btnWin;
+        private bool isCtrlPressed = false;
+        private bool isAltPressed = false;
+        private bool isShiftPressed = false;
+        private bool isWinPressed = false;
         
-        /// <summary>
-        /// 원본 매크로 키워드 (편집 모드일 때 사용)
-        /// </summary>
-        private string originalKeyword = string.Empty;
+        // 2x2 레이아웃을 위한 새 컨트롤들
+        private TableLayoutPanel mainLayout;
+        private GroupBox[] panelGroups;
+        private RichTextBox txtHelpInfo;
+        private ToolTip formToolTip;
+        private FlowLayoutPanel keyboardPanel;
 
-        /// <summary>
-        /// 매크로 추가 폼의 생성자입니다.
-        /// </summary>
-        /// <param name="voiceRecognitionService">음성 인식 서비스 인스턴스</param>
         public AddMacroForm(VoiceRecognitionService voiceRecognitionService)
         {
             this.voiceRecognitionService = voiceRecognitionService;
-            this.audioRecorder = new AudioRecordingService();
-            this.settings = new AppSettings(); // 기본 설정 사용 (설정 파일에서 로드)
+            settings = AppSettings.Load();
             
-            // OpenAI API 서비스 초기화
+            // 오디오 녹음 서비스 초기화
+            audioRecorder = new AudioRecordingService(settings);
+            audioRecorder.RecordingStatusChanged += AudioRecorder_RecordingStatusChanged;
+            audioRecorder.AudioLevelChanged += AudioRecorder_AudioLevelChanged;
+            
+            // OpenAI 서비스 (API 키가 있는 경우)
             if (!string.IsNullOrEmpty(settings.OpenAIApiKey))
             {
                 openAIService = new OpenAIService(settings.OpenAIApiKey);
             }
             
-            // 오디오 레코더 이벤트 구독
+            InitializeComponent();
+            
+            // 기존 키 액션이 있으면 파싱하여 버튼 상태 업데이트
+            if (!string.IsNullOrEmpty(KeyAction))
+            {
+                ParseKeyAction(KeyAction);
+            }
+        }
+
+        // 이 생성자는 매크로 편집에 사용됩니다
+        public AddMacroForm(VoiceRecognitionService voiceRecognitionService, 
+                              string keyword, string keyAction, 
+                              MacroActionType actionType, int actionParameters)
+        {
+            this.voiceRecognitionService = voiceRecognitionService;
+            settings = AppSettings.Load();
+            
+            // 오디오 녹음 서비스 초기화
+            audioRecorder = new AudioRecordingService(settings);
             audioRecorder.RecordingStatusChanged += AudioRecorder_RecordingStatusChanged;
             audioRecorder.AudioLevelChanged += AudioRecorder_AudioLevelChanged;
             
+            // OpenAI 서비스 (API 키가 있는 경우)
+            if (!string.IsNullOrEmpty(settings.OpenAIApiKey))
+            {
+                openAIService = new OpenAIService(settings.OpenAIApiKey);
+            }
+            
+            // 기존 매크로 정보 저장
+            this.OriginalKeyword = keyword;
+            this.Keyword = keyword;
+            this.KeyAction = keyAction;
+            this.SelectedActionType = actionType;
+            this.SelectedActionParam = actionParameters;
+            
             InitializeComponent();
             
-            // 음성 인식 팁 버튼 추가
-            AddVoiceRecognitionTipButton();
-        }
-        
-        /// <summary>
-        /// 매크로 편집 모드를 위한 생성자입니다.
-        /// </summary>
-        /// <param name="voiceRecognitionService">음성 인식 서비스 인스턴스</param>
-        /// <param name="keyword">편집할 매크로 키워드</param>
-        /// <param name="keyAction">편집할 매크로 키 동작</param>
-        /// <param name="actionType">편집할 매크로 액션 타입</param>
-        /// <param name="actionParam">편집할 매크로 액션 파라미터</param>
-        public AddMacroForm(VoiceRecognitionService voiceRecognitionService, string keyword, string keyAction, 
-                            MacroActionType actionType, int actionParam)
-            : this(voiceRecognitionService)
-        {
-            // 편집 모드 설정
-            isEditMode = true;
-            originalKeyword = keyword;
-            selectedActionType = actionType;
-            SelectedActionType = actionType;
-            selectedActionParam = actionParam;
-            SelectedActionParam = actionParam;
+            // 기존 값으로 UI 초기화
+            txtKeyword.Text = keyword;
+            txtAction.Text = keyAction;
             
-            // 폼 제목 변경
-            this.Text = "매크로 편집";
-            
-            // 폼이 로드된 후 값 설정 (컨트롤 초기화 후)
-            this.Load += (sender, e) =>
+            // cmbActionType이 초기화되었는지 확인 후 설정
+            if (cmbActionType != null && cmbActionType.Items.Count > 0)
             {
-                txtKeyword.Text = keyword;
-                txtAction.Text = keyAction;
                 cmbActionType.SelectedIndex = (int)actionType;
                 
-                // 액션 타입에 따라 파라미터 설정
-                txtActionParam.Text = actionParam.ToString();
-                
-                // 확인 버튼 텍스트 변경
-                Button okButton = this.Controls.Find("btnOk", true).FirstOrDefault() as Button;
-                if (okButton != null)
+                // numActionParam이 초기화되었는지 확인 후 설정
+                if (numActionParam != null)
                 {
-                    okButton.Text = "저장";
+                    numActionParam.Value = actionParameters;
                 }
-            };
+            }
+            
+            // 기존 키 액션이 있으면 파싱하여 버튼 상태 업데이트
+            if (!string.IsNullOrEmpty(keyAction))
+            {
+                ParseKeyAction(keyAction);
+            }
+            
+            // 타이틀 변경
+            this.Text = "매크로 수정";
         }
 
-        /// <summary>
-        /// 오디오 녹음 상태가 변경될 때 호출되는 이벤트 핸들러입니다.
-        /// </summary>
-        /// <param name="sender">이벤트 발생 객체</param>
-        /// <param name="status">변경된 상태 메시지</param>
         private void AudioRecorder_RecordingStatusChanged(object sender, string status)
         {
             // UI 스레드에서 처리
@@ -208,11 +147,6 @@ namespace VoiceMacro
             }
         }
 
-        /// <summary>
-        /// 오디오 레벨이 변경될 때 호출되는 이벤트 핸들러입니다.
-        /// </summary>
-        /// <param name="sender">이벤트 발생 객체</param>
-        /// <param name="level">현재 오디오 레벨 (dB)</param>
         private void AudioRecorder_AudioLevelChanged(object sender, float level)
         {
             // UI 스레드에서 처리
@@ -232,32 +166,14 @@ namespace VoiceMacro
             }
         }
 
-        /// <summary>
-        /// 음성 녹음 버튼 클릭 이벤트 핸들러입니다.
-        /// 버튼 상태에 따라 녹음을 시작하거나 중지합니다.
-        /// </summary>
-        /// <param name="sender">이벤트 발생 객체</param>
-        /// <param name="e">이벤트 인자</param>
         private async void BtnRecord_Click(object sender, EventArgs e)
         {
-            // 이미 녹음 중이면 녹음 중지
             if (isRecording)
             {
                 // 녹음 중지
-                try
-                {
-                    cancellationTokenSource?.Cancel();
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"녹음 취소 중 오류: {ex.Message}");
-                }
-                finally
-                {
-                    btnRecord.Text = "음성 녹음";
-                    isRecording = false;
-                    lblRecordingStatus.Text = "취소됨";
-                }
+                cancellationTokenSource?.Cancel();
+                btnRecord.Text = "음성 녹음";
+                isRecording = false;
                 return;
             }
 
@@ -273,105 +189,46 @@ namespace VoiceMacro
                 }
 
                 // 녹음 시작
-                cancellationTokenSource = new CancellationTokenSource();
-                btnRecord.Text = "녹음 중지";
+                btnRecord.Text = "중지";
                 isRecording = true;
-                lblRecordingStatus.Text = "말씀하세요...";
-                btnSaveAudio.Enabled = false;
-
-                // 레코딩 시작 시 이전 인식 결과 초기화
-                ClearRecognitionLabels();
+                cancellationTokenSource = new CancellationTokenSource();
                 
-                // 음성 인식 예시 표시 - 사용자에게 어떤 종류의 명령어가 잘 인식되는지 보여줍니다
-                ShowRecognitionExamples();
-
-                try
+                // 음성 녹음 및 인식 시작
+                byte[] audioData = await audioRecorder.RecordSpeechAsync(cancellationTokenSource.Token);
+                
+                if (audioData.Length > 0)
                 {
-                    // 녹음 시작 및 결과 처리
-                    lastRecordedAudio = await audioRecorder.RecordSpeechAsync(cancellationTokenSource.Token);
+                    lblRecordingStatus.Text = "음성 인식 중...";
                     
-                    if (lastRecordedAudio != null && lastRecordedAudio.Length > 0)
+                    // 음성 인식 (OpenAI API 또는 로컬)
+                    string recognizedText;
+                    
+                    if (settings.UseOpenAIApi && openAIService != null)
                     {
-                        btnSaveAudio.Enabled = true;
-                        
-                        try
-                        {
-                            // 음성 처리 중임을 표시
-                            lblRecordingStatus.Text = "음성 분석 중...";
-                            Application.DoEvents();
-                            
-                            string recognizedText = "";
-                            
-                            // OpenAI API 사용 (설정에 따라)
-                            if (settings != null && settings.UseOpenAI && openAIService != null)
-                            {
-                                recognizedText = await openAIService.TranscribeAudioAsync(
-                                    lastRecordedAudio, settings?.WhisperLanguage ?? "ko");
-                            }
-                            else
-                            {
-                                // VoiceRecognitionService의 로컬 Whisper 프로세서를 활용
-                                recognizedText = await voiceRecognitionService.RecognizeAudioAsync(
-                                    lastRecordedAudio, settings.WhisperLanguage);
-                            }
-                            
-                            if (!string.IsNullOrWhiteSpace(recognizedText))
-                            {
-                                // 인식된 텍스트에서 키워드 추출
-                                string keyword = ExtractKeyword(recognizedText);
-                                
-                                // 키워드 필드에는 입력하지 않고 별도 표시만 함
-                                // txtKeyword.Text = keyword;
-                                
-                                // 상태 레이블에 인식된 원본 텍스트 표시 (최대 50자)
-                                string displayText = recognizedText.Length > 50 
-                                    ? recognizedText.Substring(0, 47) + "..." 
-                                    : recognizedText;
-                                
-                                lblRecordingStatus.Text = "인식 완료";
-                                
-                                // 인식 결과 표시 (별도 팝업 또는 확장된 레이블)
-                                ShowRecognitionResult(displayText);
-                                
-                                // 추출된 키워드를 표시하는 별도 레이블 추가
-                                ShowExtractedKeyword(keyword);
-                                
-                                // 변환 과정 설명 표시
-                                ShowTransformationProcess(recognizedText, keyword);
-                            }
-                            else
-                            {
-                                // 인식 실패 시 매크로 이름은 변경하지 않고 상태만 표시
-                                lblRecordingStatus.Text = "인식 실패 (키워드를 직접 입력해주세요)";
-                                txtKeyword.Focus(); // 사용자가 직접 입력할 수 있도록 포커스 이동
-                                
-                                // 이전 인식 결과 및 키워드 레이블 초기화
-                                ClearRecognitionLabels();
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine($"음성 인식 중 오류: {ex.Message}");
-                            lblRecordingStatus.Text = "인식 처리 오류";
-                        }
+                        recognizedText = await openAIService.TranscribeAudioAsync(
+                            audioData, settings.WhisperLanguage, CancellationToken.None);
                     }
                     else
                     {
-                        // 오디오 데이터가 없는 경우 (마이크 감지 실패 등)
-                        lblRecordingStatus.Text = "녹음 데이터 없음";
-                        btnSaveAudio.Enabled = false;
-                        lastRecordedAudio = null;
+                        // VoiceRecognitionService의 로컬 Whisper 프로세서를 활용
+                        recognizedText = await voiceRecognitionService.RecognizeAudioAsync(
+                            audioData, settings.WhisperLanguage);
+                    }
+                    
+                    if (!string.IsNullOrWhiteSpace(recognizedText))
+                    {
+                        txtKeyword.Text = recognizedText.Trim();
+                        lblRecordingStatus.Text = "인식 완료";
+                    }
+                    else
+                    {
+                        lblRecordingStatus.Text = "인식 실패";
                     }
                 }
-                catch (OperationCanceledException)
+                else
                 {
-                    // 취소된 경우 - 정상적인 처리
-                    lblRecordingStatus.Text = "녹음 취소됨";
-                    btnSaveAudio.Enabled = false;
-                    lastRecordedAudio = null;
-                    
-                    // 인식 결과 및 키워드 레이블 초기화
-                    ClearRecognitionLabels();
+                    // 오디오 데이터가 없는 경우 (마이크 감지 실패 등)
+                    lblRecordingStatus.Text = "녹음 실패";
                 }
                 
                 btnRecord.Text = "음성 녹음";
@@ -385,8 +242,6 @@ namespace VoiceMacro
                 btnRecord.Text = "음성 녹음";
                 isRecording = false;
                 lblRecordingStatus.Text = "오류 발생";
-                btnSaveAudio.Enabled = false;
-                lastRecordedAudio = null;
             }
             finally
             {
@@ -395,13 +250,12 @@ namespace VoiceMacro
             }
         }
 
-        /// <summary>
-        /// 폼 컴포넌트들을 초기화합니다.
-        /// </summary>
         private void InitializeComponent()
         {
-            // 폼 설정
-            this.ClientSize = new System.Drawing.Size(750, 500); // 더 넓게 조정
+            this.SuspendLayout();
+            
+            // 폼 설정 - 더 넓고 여유롭게
+            this.ClientSize = new System.Drawing.Size(800, 600);
             this.Name = "AddMacroForm";
             this.Text = "매크로 추가";
             this.StartPosition = FormStartPosition.CenterParent;
@@ -409,975 +263,781 @@ namespace VoiceMacro
             this.MaximizeBox = false;
             this.MinimizeBox = false;
             
-            // 탭 컨트롤 추가
-            TabControl tabControl = new TabControl();
-            tabControl.Dock = DockStyle.Fill;
-            tabControl.Padding = new Point(10, 10);
+            // 툴팁 컴포넌트 초기화
+            formToolTip = new ToolTip();
+            formToolTip.AutoPopDelay = 5000;
+            formToolTip.InitialDelay = 500;
+            formToolTip.ReshowDelay = 500;
+            formToolTip.ShowAlways = true;
             
-            // 기본 탭 페이지
-            TabPage basicTabPage = new TabPage("기본 설정");
-            basicTabPage.Padding = new Padding(10);
+            // 메인 2x2 레이아웃 설정
+            mainLayout = new TableLayoutPanel();
+            mainLayout.Dock = DockStyle.Fill;
+            mainLayout.RowCount = 2;
+            mainLayout.ColumnCount = 2;
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            mainLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 50F));
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            mainLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50F));
+            mainLayout.Padding = new Padding(10);
+            mainLayout.Margin = new Padding(0);
+            this.Controls.Add(mainLayout);
             
-            // 고급 탭 페이지
-            TabPage advancedTabPage = new TabPage("고급 설정");
-            advancedTabPage.Padding = new Padding(10);
+            // 4개의 패널(GroupBox) 생성
+            panelGroups = new GroupBox[4];
+            string[] panelTitles = {
+                "음성 명령어 및 키 동작", "키 조합 및 모디파이어",
+                "액션 타입 설정", "도움말 및 정보"
+            };
             
-            // 음성 인식 탭 페이지
-            TabPage voiceTabPage = new TabPage("음성 인식");
-            voiceTabPage.Padding = new Padding(10);
+            for (int i = 0; i < 4; i++)
+            {
+                panelGroups[i] = new GroupBox();
+                panelGroups[i].Text = panelTitles[i];
+                panelGroups[i].Dock = DockStyle.Fill;
+                panelGroups[i].Margin = new Padding(5);
+                panelGroups[i].Padding = new Padding(10);
+                panelGroups[i].Font = new Font(this.Font.FontFamily, 10F, FontStyle.Bold);
+                
+                // 그리드 위치 계산 (0,0), (0,1), (1,0), (1,1)
+                int row = i / 2;
+                int col = i % 2;
+                mainLayout.Controls.Add(panelGroups[i], col, row);
+            }
             
-            // 기본 탭 페이지 컨트롤 추가
-            // 1. 기본 정보 그룹 박스
-            GroupBox basicInfoGroup = new GroupBox();
-            basicInfoGroup.Text = "매크로 정보";
-            basicInfoGroup.Size = new Size(680, 220); // 크기 증가
-            basicInfoGroup.Location = new Point(10, 10);
-            basicTabPage.Controls.Add(basicInfoGroup);
+            // 1. 왼쪽 상단 패널 - 음성 명령어 및 키 동작 설정
+            InitializeVoiceAndKeyPanel(panelGroups[0]);
             
-            // 키워드 레이블과 텍스트 박스
+            // 2. 오른쪽 상단 패널 - 키 조합 및 모디파이어
+            InitializeKeyModifierPanel(panelGroups[1]);
+            
+            // 3. 왼쪽 하단 패널 - 액션 타입 설정
+            InitializeActionTypePanel(panelGroups[2]);
+            
+            // 4. 오른쪽 하단 패널 - 도움말 및 버튼
+            InitializeHelpAndButtonPanel(panelGroups[3]);
+            
+            // 액션 타입 초기화 - 여기서 호출
+            InitializeActionTypes();
+            
+            this.ResumeLayout(false);
+        }
+        
+        /// <summary>
+        /// 왼쪽 상단 패널 - 음성 명령어 및 키 동작 설정 초기화
+        /// </summary>
+        private void InitializeVoiceAndKeyPanel(GroupBox panel)
+        {
+            // 패널 내 컨트롤 배치를 위한 테이블 레이아웃
+            TableLayoutPanel layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.RowCount = 5;
+            layout.ColumnCount = 2;
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 30F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120F));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            panel.Controls.Add(layout);
+            
+            // 음성 명령어 라벨 및 텍스트박스
             Label lblKeyword = new Label();
             lblKeyword.Text = "음성 명령어:";
-            lblKeyword.Location = new Point(20, 30);
-            lblKeyword.Size = new Size(100, 20);
-            basicInfoGroup.Controls.Add(lblKeyword);
-
+            lblKeyword.Dock = DockStyle.Fill;
+            lblKeyword.TextAlign = ContentAlignment.MiddleLeft;
+            lblKeyword.Font = new Font(this.Font.FontFamily, 9F);
+            layout.Controls.Add(lblKeyword, 0, 0);
+            
             txtKeyword = new TextBox();
-            txtKeyword.Location = new Point(130, 30);
-            txtKeyword.Size = new Size(250, 20);
-            basicInfoGroup.Controls.Add(txtKeyword);
-
-            // 키 동작 레이블과 텍스트 박스
+            txtKeyword.Dock = DockStyle.Fill;
+            txtKeyword.Margin = new Padding(3, 5, 3, 3);
+            txtKeyword.Font = new Font(this.Font.FontFamily, 10F);
+            layout.Controls.Add(txtKeyword, 1, 0);
+            formToolTip.SetToolTip(txtKeyword, "음성으로 인식할 명령어를 입력하세요. 음성 녹음 버튼을 눌러 직접 녹음할 수도 있습니다.");
+            
+            // 키 동작 라벨 및 텍스트박스
             Label lblAction = new Label();
             lblAction.Text = "키 동작:";
-            lblAction.Location = new Point(20, 60);
-            lblAction.Size = new Size(100, 20);
-            basicInfoGroup.Controls.Add(lblAction);
-
+            lblAction.Dock = DockStyle.Fill;
+            lblAction.TextAlign = ContentAlignment.MiddleLeft;
+            lblAction.Font = new Font(this.Font.FontFamily, 9F);
+            layout.Controls.Add(lblAction, 0, 2);
+            
             txtAction = new TextBox();
-            txtAction.Location = new Point(130, 60);
-            txtAction.Size = new Size(250, 20);
-            basicInfoGroup.Controls.Add(txtAction);
-
-            // 키 동작 안내 레이블
+            txtAction.Dock = DockStyle.Fill;
+            txtAction.Margin = new Padding(3, 5, 3, 3);
+            txtAction.Font = new Font(this.Font.FontFamily, 10F);
+            layout.Controls.Add(txtAction, 1, 2);
+            formToolTip.SetToolTip(txtAction, "실행할 키보드 동작을 입력하세요. 오른쪽의 키 조합 패널을 이용해 쉽게 설정할 수 있습니다.");
+            
+            // 키 동작 예시 라벨
             Label lblActionInfo = new Label();
             lblActionInfo.Text = "예: CTRL+C, ALT+TAB, F5 등";
-            lblActionInfo.Location = new Point(130, 85);
-            lblActionInfo.Size = new Size(200, 20);
+            lblActionInfo.Dock = DockStyle.Fill;
+            lblActionInfo.TextAlign = ContentAlignment.TopLeft;
             lblActionInfo.ForeColor = Color.Gray;
-            lblActionInfo.Font = new Font(lblActionInfo.Font.FontFamily, lblActionInfo.Font.Size - 1);
-            basicInfoGroup.Controls.Add(lblActionInfo);
+            lblActionInfo.Font = new Font(this.Font.FontFamily, 8F, FontStyle.Italic);
+            layout.Controls.Add(lblActionInfo, 1, 3);
             
-            // 가상 키패드 그룹박스
-            GroupBox virtualKeypadGroup = new GroupBox();
-            virtualKeypadGroup.Text = "가상 키패드";
-            virtualKeypadGroup.Location = new Point(390, 20);
-            virtualKeypadGroup.Size = new Size(280, 190);
-            basicInfoGroup.Controls.Add(virtualKeypadGroup);
+            // 녹음 관련 컨트롤을 포함할 패널
+            Panel recordingPanel = new Panel();
+            recordingPanel.Dock = DockStyle.Fill;
+            layout.Controls.Add(recordingPanel, 0, 4);
+            layout.SetColumnSpan(recordingPanel, 2);
             
-            // 키패드 패널 (FlowLayoutPanel 사용)
-            FlowLayoutPanel keypadPanel = new FlowLayoutPanel();
-            keypadPanel.Dock = DockStyle.Fill;
-            keypadPanel.Padding = new Padding(5);
-            keypadPanel.AutoScroll = true;
-            virtualKeypadGroup.Controls.Add(keypadPanel);
+            // 녹음 버튼
+            btnRecord = new Button();
+            btnRecord.Text = "음성 녹음";
+            btnRecord.Location = new Point(0, 10);
+            btnRecord.Size = new Size(110, 35);
+            btnRecord.Click += BtnRecord_Click;
+            btnRecord.BackColor = Color.LightSkyBlue;
+            btnRecord.FlatStyle = FlatStyle.Flat;
+            btnRecord.Font = new Font(this.Font.FontFamily, 9F, FontStyle.Bold);
+            recordingPanel.Controls.Add(btnRecord);
+            formToolTip.SetToolTip(btnRecord, "클릭하여 음성을 녹음하고 자동으로 명령어를 인식합니다.");
             
-            // 자주 사용되는 특수 키 버튼들 추가
-            string[] specialKeys = new string[] {
-                "{ENTER}", "{ESC}", "{TAB}", "{SPACE}", 
-                "{BACKSPACE}", "{DELETE}", "{INSERT}",
-                "{HOME}", "{END}", "{PGUP}", "{PGDN}",
-                "{UP}", "{DOWN}", "{LEFT}", "{RIGHT}",
-                "{F1}", "{F2}", "{F3}", "{F4}", "{F5}", 
-                "{F6}", "{F7}", "{F8}", "{F9}", "{F10}",
-                "{F11}", "{F12}", "{PRTSC}", "{BREAK}", "{PAUSE}",
-                "{PAUP}", "{PADN}" // 요청한 특수 키 추가
+            // 녹음 상태 표시줄
+            progressRecording = new ProgressBar();
+            progressRecording.Location = new Point(120, 10);
+            progressRecording.Size = new Size(panel.Width - 150, 15);
+            progressRecording.Minimum = 0;
+            progressRecording.Maximum = 100;
+            progressRecording.Value = 0;
+            recordingPanel.Controls.Add(progressRecording);
+            
+            // 녹음 상태 라벨
+            lblRecordingStatus = new Label();
+            lblRecordingStatus.Text = "준비";
+            lblRecordingStatus.Location = new Point(120, 30);
+            lblRecordingStatus.Size = new Size(panel.Width - 150, 20);
+            lblRecordingStatus.ForeColor = Color.Gray;
+            lblRecordingStatus.Font = new Font(this.Font.FontFamily, 8F);
+            recordingPanel.Controls.Add(lblRecordingStatus);
+        }
+        
+        /// <summary>
+        /// 오른쪽 상단 패널 - 키 조합 및 모디파이어 초기화
+        /// </summary>
+        private void InitializeKeyModifierPanel(GroupBox panel)
+        {
+            // 모디파이어 키 영역을 위한 패널
+            Panel modifierPanel = new Panel();
+            modifierPanel.Dock = DockStyle.Top;
+            modifierPanel.Height = 70;
+            modifierPanel.Padding = new Padding(5);
+            panel.Controls.Add(modifierPanel);
+            
+            // 모디파이어 키 라벨
+            Label lblModifiers = new Label();
+            lblModifiers.Text = "모디파이어 키:";
+            lblModifiers.Location = new Point(5, 10);
+            lblModifiers.Size = new Size(100, 20);
+            lblModifiers.Font = new Font(this.Font.FontFamily, 9F);
+            modifierPanel.Controls.Add(lblModifiers);
+            
+            // 모디파이어 키 버튼들
+            string[] modifierNames = { "Ctrl", "Alt", "Shift", "Win" };
+            Color[] modifierColors = { Color.LightBlue, Color.LightGreen, Color.LightCoral, Color.LightGoldenrodYellow };
+            int buttonWidth = 70;
+            int gap = 10;
+            int startX = 110;
+            
+            // Ctrl 버튼
+            btnCtrl = new Button();
+            btnCtrl.Text = modifierNames[0];
+            btnCtrl.Location = new Point(startX, 5);
+            btnCtrl.Size = new Size(buttonWidth, 60);
+            btnCtrl.BackColor = Color.WhiteSmoke;
+            btnCtrl.FlatStyle = FlatStyle.Flat;
+            btnCtrl.Font = new Font(this.Font.FontFamily, 9F, FontStyle.Bold);
+            btnCtrl.Click += (sender, e) => 
+            {
+                isCtrlPressed = !isCtrlPressed;
+                btnCtrl.BackColor = isCtrlPressed ? modifierColors[0] : Color.WhiteSmoke;
+                UpdateKeyAction();
+                ShowHelp("Ctrl 키를 누른 상태로 다른 키를 누르는 조합입니다.");
+            };
+            modifierPanel.Controls.Add(btnCtrl);
+            formToolTip.SetToolTip(btnCtrl, "Ctrl 키를 조합에 추가/제거합니다.");
+            
+            // Alt 버튼
+            btnAlt = new Button();
+            btnAlt.Text = modifierNames[1];
+            btnAlt.Location = new Point(startX + buttonWidth + gap, 5);
+            btnAlt.Size = new Size(buttonWidth, 60);
+            btnAlt.BackColor = Color.WhiteSmoke;
+            btnAlt.FlatStyle = FlatStyle.Flat;
+            btnAlt.Font = new Font(this.Font.FontFamily, 9F, FontStyle.Bold);
+            btnAlt.Click += (sender, e) => 
+            {
+                isAltPressed = !isAltPressed;
+                btnAlt.BackColor = isAltPressed ? modifierColors[1] : Color.WhiteSmoke;
+                UpdateKeyAction();
+                ShowHelp("Alt 키를 누른 상태로 다른 키를 누르는 조합입니다.");
+            };
+            modifierPanel.Controls.Add(btnAlt);
+            formToolTip.SetToolTip(btnAlt, "Alt 키를 조합에 추가/제거합니다.");
+            
+            // Shift 버튼
+            btnShift = new Button();
+            btnShift.Text = modifierNames[2];
+            btnShift.Location = new Point(startX + (buttonWidth + gap) * 2, 5);
+            btnShift.Size = new Size(buttonWidth, 60);
+            btnShift.BackColor = Color.WhiteSmoke;
+            btnShift.FlatStyle = FlatStyle.Flat;
+            btnShift.Font = new Font(this.Font.FontFamily, 9F, FontStyle.Bold);
+            btnShift.Click += (sender, e) => 
+            {
+                isShiftPressed = !isShiftPressed;
+                btnShift.BackColor = isShiftPressed ? modifierColors[2] : Color.WhiteSmoke;
+                UpdateKeyAction();
+                ShowHelp("Shift 키를 누른 상태로 다른 키를 누르는 조합입니다.");
+            };
+            modifierPanel.Controls.Add(btnShift);
+            formToolTip.SetToolTip(btnShift, "Shift 키를 조합에 추가/제거합니다.");
+            
+            // Win 버튼
+            btnWin = new Button();
+            btnWin.Text = modifierNames[3];
+            btnWin.Location = new Point(startX + (buttonWidth + gap) * 3, 5);
+            btnWin.Size = new Size(buttonWidth, 60);
+            btnWin.BackColor = Color.WhiteSmoke;
+            btnWin.FlatStyle = FlatStyle.Flat;
+            btnWin.Font = new Font(this.Font.FontFamily, 9F, FontStyle.Bold);
+            btnWin.Click += (sender, e) => 
+            {
+                isWinPressed = !isWinPressed;
+                btnWin.BackColor = isWinPressed ? modifierColors[3] : Color.WhiteSmoke;
+                UpdateKeyAction();
+                ShowHelp("Windows 키를 누른 상태로 다른 키를 누르는 조합입니다.");
+            };
+            modifierPanel.Controls.Add(btnWin);
+            formToolTip.SetToolTip(btnWin, "Windows 키를 조합에 추가/제거합니다.");
+            
+            // 가상 키패드를 위한 FlowLayoutPanel
+            keyboardPanel = new FlowLayoutPanel();
+            keyboardPanel.Dock = DockStyle.Fill;
+            keyboardPanel.FlowDirection = FlowDirection.LeftToRight;
+            keyboardPanel.WrapContents = true;
+            keyboardPanel.AutoScroll = true;
+            keyboardPanel.Padding = new Padding(5);
+            panel.Controls.Add(keyboardPanel);
+            
+            // 기능 키 그룹 (F1-F12)
+            AddKeyGroupHeader(keyboardPanel, "기능 키");
+            for (int i = 1; i <= 12; i++)
+            {
+                string keyName = $"F{i}";
+                AddKeyButton(keyboardPanel, keyName, $"F{i} 기능 키를 누릅니다.");
+            }
+            
+            // 특수 키 그룹
+            AddKeyGroupHeader(keyboardPanel, "특수 키");
+            string[] specialKeys = new string[] 
+            { 
+                "Enter", "Esc", "Tab", "Space", "Backspace", 
+                "Insert", "Delete", "Home", "End", "PageUp", "PageDown",
+                "PrintScreen", "ScrollLock", "Pause"
             };
             
             foreach (string key in specialKeys)
             {
-                Button keyButton = new Button();
-                keyButton.Text = key.Replace("{", "").Replace("}", "");
-                keyButton.Tag = key;
-                keyButton.Size = new Size(70, 30);
-                keyButton.Margin = new Padding(3);
-                keyButton.BackColor = Color.LightBlue;
-                keyButton.Click += KeyButton_Click;
-                keypadPanel.Controls.Add(keyButton);
+                AddKeyButton(keyboardPanel, key, $"{key} 키를 누릅니다.");
             }
             
-            // 조합 키 섹션 추가
-            Label lblModifierKeys = new Label();
-            lblModifierKeys.Text = "조합 키";
-            lblModifierKeys.AutoSize = true;
-            lblModifierKeys.Margin = new Padding(3, 10, 3, 3);
-            keypadPanel.Controls.Add(lblModifierKeys);
-            
-            // 새 패널로 조합 키 감싸기
-            FlowLayoutPanel modifierPanel = new FlowLayoutPanel();
-            modifierPanel.Size = new Size(280, 35);
-            modifierPanel.Margin = new Padding(0);
-            keypadPanel.Controls.Add(modifierPanel);
-            
-            // 조합 키 버튼 추가
-            string[] modifierKeys = new string[] { "CTRL+", "ALT+", "SHIFT+", "WIN+" };
-            foreach (string key in modifierKeys)
+            // 방향 키 그룹
+            AddKeyGroupHeader(keyboardPanel, "방향 키");
+            string[] directionKeys = new string[] { "Up", "Down", "Left", "Right" };
+            foreach (string key in directionKeys)
             {
-                Button keyButton = new Button();
-                keyButton.Text = key;
-                keyButton.Tag = key;
-                keyButton.Size = new Size(65, 30);
-                keyButton.Margin = new Padding(3);
-                keyButton.BackColor = Color.LightGreen;
-                keyButton.Click += KeyButton_Click;
-                modifierPanel.Controls.Add(keyButton);
+                AddKeyButton(keyboardPanel, key, $"{key} 방향 키를 누릅니다.");
             }
             
-            // 액션 타입 그룹
-            GroupBox actionTypeGroup = new GroupBox();
-            actionTypeGroup.Text = "액션 타입";
-            actionTypeGroup.Size = new Size(400, 120);
-            actionTypeGroup.Location = new Point(10, 240);
-            basicTabPage.Controls.Add(actionTypeGroup);
+            // 숫자 키 그룹
+            AddKeyGroupHeader(keyboardPanel, "숫자 키");
+            for (int i = 0; i <= 9; i++)
+            {
+                AddKeyButton(keyboardPanel, i.ToString(), $"숫자 {i} 키를 누릅니다.");
+            }
             
-            // 액션 타입 선택 레이블과 콤보박스
-            Label lblActionType = new Label();
+            // 알파벳 키 그룹
+            AddKeyGroupHeader(keyboardPanel, "알파벳 키");
+            for (char c = 'A'; c <= 'Z'; c++)
+            {
+                AddKeyButton(keyboardPanel, c.ToString(), $"{c} 키를 누릅니다.");
+            }
+        }
+        
+        /// <summary>
+        /// 키패드에 키 그룹 헤더를 추가합니다.
+        /// </summary>
+        private void AddKeyGroupHeader(FlowLayoutPanel panel, string text)
+        {
+            Label header = new Label();
+            header.Text = text;
+            header.AutoSize = false;
+            header.Width = panel.Width - 20;
+            header.Height = 25;
+            header.TextAlign = ContentAlignment.MiddleLeft;
+            header.Font = new Font(this.Font.FontFamily, 9F, FontStyle.Bold);
+            header.ForeColor = Color.DarkBlue;
+            header.BorderStyle = BorderStyle.FixedSingle;
+            header.BackColor = Color.LightCyan;
+            header.Margin = new Padding(0, 10, 0, 5);
+            panel.Controls.Add(header);
+        }
+        
+        /// <summary>
+        /// 키패드에 키 버튼을 추가합니다.
+        /// </summary>
+        private void AddKeyButton(FlowLayoutPanel panel, string keyText, string helpText)
+        {
+            if (panel == null) return;
+            
+            Button btn = new Button();
+            btn.Text = keyText;
+            btn.Size = new Size(60, 30);
+            btn.Margin = new Padding(3);
+            btn.FlatStyle = FlatStyle.Flat;
+            btn.BackColor = Color.WhiteSmoke;
+            btn.Click += (sender, e) => AddKeyToAction(keyText);
+            btn.MouseEnter += (sender, e) => ShowHelp(helpText);
+            
+            if (formToolTip != null)
+            {
+                formToolTip.SetToolTip(btn, $"{keyText} 키를 키 동작에 추가합니다.");
+            }
+            
+            panel.Controls.Add(btn);
+        }
+        
+        /// <summary>
+        /// 왼쪽 하단 패널 - 액션 타입 설정 초기화
+        /// </summary>
+        private void InitializeActionTypePanel(GroupBox panel)
+        {
+            // 패널 내 컨트롤 배치를 위한 테이블 레이아웃
+            TableLayoutPanel layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.RowCount = 3;
+            layout.ColumnCount = 2;
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100F));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 120F));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+            panel.Controls.Add(layout);
+            
+            // 액션 타입 라벨 및 콤보박스
+            lblActionType = new Label();
             lblActionType.Text = "액션 타입:";
-            lblActionType.Location = new Point(20, 30);
-            lblActionType.Size = new Size(100, 20);
-            actionTypeGroup.Controls.Add(lblActionType);
+            lblActionType.Dock = DockStyle.Fill;
+            lblActionType.TextAlign = ContentAlignment.MiddleLeft;
+            lblActionType.Font = new Font(this.Font.FontFamily, 9F);
+            layout.Controls.Add(lblActionType, 0, 0);
             
             cmbActionType = new ComboBox();
-            cmbActionType.Location = new Point(130, 30);
-            cmbActionType.Size = new Size(250, 20);
+            cmbActionType.Dock = DockStyle.Fill;
+            cmbActionType.Margin = new Padding(3, 5, 3, 3);
             cmbActionType.DropDownStyle = ComboBoxStyle.DropDownList;
+            cmbActionType.Font = new Font(this.Font.FontFamily, 10F);
+            layout.Controls.Add(cmbActionType, 1, 0);
+            formToolTip.SetToolTip(cmbActionType, "키 액션의 동작 방식을 선택합니다.");
             
-            // 콤보박스에 액션 타입 추가
-            cmbActionType.Items.Add(new { Text = "기본 - 한 번 입력", Value = MacroActionType.Default });
-            cmbActionType.Items.Add(new { Text = "토글 - 키를 누르고 떼는 동작 전환", Value = MacroActionType.Toggle });
-            cmbActionType.Items.Add(new { Text = "반복 - n번 반복", Value = MacroActionType.Repeat });
-            cmbActionType.Items.Add(new { Text = "홀드 - n초 동안 누르기", Value = MacroActionType.Hold });
-            cmbActionType.Items.Add(new { Text = "터보 - n밀리초 간격으로 연타", Value = MacroActionType.Turbo });
-            cmbActionType.Items.Add(new { Text = "콤보 - 여러 키 순차 입력", Value = MacroActionType.Combo });
+            // 액션 타입 변경 이벤트 핸들러 추가는 InitializeActionTypes에서 수행
             
-            // 표시 형식 지정
-            cmbActionType.DisplayMember = "Text";
-            cmbActionType.ValueMember = "Value";
-            
-            // 기본값 선택
-            cmbActionType.SelectedIndex = 0;
-            
-            // 이벤트 연결
-            cmbActionType.SelectedIndexChanged += CmbActionType_SelectedIndexChanged;
-            
-            actionTypeGroup.Controls.Add(cmbActionType);
-            
-            // 액션 파라미터 레이블과 텍스트박스
-            Label lblActionParam = new Label();
+            // 액션 파라미터 라벨 및 입력 컨트롤
+            lblActionParam = new Label();
             lblActionParam.Text = "파라미터:";
-            lblActionParam.Location = new Point(20, 70);
-            lblActionParam.Size = new Size(100, 20);
-            actionTypeGroup.Controls.Add(lblActionParam);
+            lblActionParam.Dock = DockStyle.Fill;
+            lblActionParam.TextAlign = ContentAlignment.MiddleLeft;
+            lblActionParam.Font = new Font(this.Font.FontFamily, 9F);
+            layout.Controls.Add(lblActionParam, 0, 1);
             
-            txtActionParam = new TextBox();
-            txtActionParam.Location = new Point(130, 70);
-            txtActionParam.Size = new Size(100, 20);
-            txtActionParam.Text = "0";
-            txtActionParam.Enabled = false; // 기본값은 비활성화
-            txtActionParam.TextChanged += TxtActionParam_TextChanged;
-            actionTypeGroup.Controls.Add(txtActionParam);
+            // 파라미터 입력을 위한 패널 (수치 입력 + 설명 라벨)
+            Panel paramPanel = new Panel();
+            paramPanel.Dock = DockStyle.Fill;
+            layout.Controls.Add(paramPanel, 1, 1);
             
-            // 액션 파라미터 도움말
-            Label lblActionParamInfo = new Label();
-            lblActionParamInfo.Text = "반복 횟수, 지속 시간(초) 등";
-            lblActionParamInfo.Location = new Point(240, 70);
-            lblActionParamInfo.Size = new Size(200, 20);
-            lblActionParamInfo.ForeColor = Color.Gray;
-            lblActionParamInfo.Font = new Font(lblActionParamInfo.Font.FontFamily, lblActionParamInfo.Font.Size - 1);
-            actionTypeGroup.Controls.Add(lblActionParamInfo);
+            numActionParam = new NumericUpDown();
+            numActionParam.Location = new Point(0, 5);
+            numActionParam.Size = new Size(120, 25);
+            numActionParam.Minimum = 0;
+            numActionParam.Maximum = 10000;
+            numActionParam.Font = new Font(this.Font.FontFamily, 10F);
+            paramPanel.Controls.Add(numActionParam);
+            formToolTip.SetToolTip(numActionParam, "선택한 액션 타입에 따른 파라미터 값을 설정합니다.");
             
-            // 음성 탭 구성 - 녹음 그룹
-            GroupBox recordingGroup = new GroupBox();
-            recordingGroup.Text = "음성 녹음";
-            recordingGroup.Size = new Size(400, 280);
-            recordingGroup.Location = new Point(10, 10);
-            voiceTabPage.Controls.Add(recordingGroup);
+            lblParamDescription = new Label();
+            lblParamDescription.Text = "추가 정보 없음";
+            lblParamDescription.Location = new Point(130, 8);
+            lblParamDescription.Size = new Size(panel.Width - 160, 20);
+            lblParamDescription.ForeColor = Color.Gray;
+            lblParamDescription.Font = new Font(this.Font.FontFamily, 8F, FontStyle.Italic);
+            paramPanel.Controls.Add(lblParamDescription);
             
-            // 녹음 상태 레이블
-            lblRecordingStatus = new Label();
-            lblRecordingStatus.Text = "녹음 준비됨";
-            lblRecordingStatus.Location = new Point(20, 30);
-            lblRecordingStatus.Size = new Size(360, 20);
-            lblRecordingStatus.TextAlign = ContentAlignment.MiddleCenter;
-            lblRecordingStatus.Font = new Font(lblRecordingStatus.Font, FontStyle.Bold);
-            recordingGroup.Controls.Add(lblRecordingStatus);
+            // 액션 타입별 상세 설명 영역
+            RichTextBox txtActionTypeDescription = new RichTextBox();
+            txtActionTypeDescription.Dock = DockStyle.Fill;
+            txtActionTypeDescription.BackColor = Color.LightYellow;
+            txtActionTypeDescription.ReadOnly = true;
+            txtActionTypeDescription.BorderStyle = BorderStyle.None;
+            txtActionTypeDescription.Font = new Font(this.Font.FontFamily, 9F);
+            layout.Controls.Add(txtActionTypeDescription, 0, 2);
+            layout.SetColumnSpan(txtActionTypeDescription, 2);
             
-            // 녹음 버튼
-            btnRecord = new Button();
-            btnRecord.Text = "음성 녹음 시작";
-            btnRecord.Location = new Point(20, 60);
-            btnRecord.Size = new Size(360, 40);
-            btnRecord.BackColor = Color.LightBlue;
-            btnRecord.Click += BtnRecord_Click;
-            recordingGroup.Controls.Add(btnRecord);
+            // 액션 타입 변경 시 설명 업데이트
+            cmbActionType.SelectedIndexChanged += (sender, e) => 
+            {
+                MacroActionType selectedType = (MacroActionType)cmbActionType.SelectedIndex;
+                
+                // 액션 타입별 상세 설명
+                string description = GetActionTypeDescription(selectedType);
+                txtActionTypeDescription.Text = description;
+                
+                // 도움말 영역에도 표시
+                ShowHelp(description);
+            };
+        }
+        
+        /// <summary>
+        /// 액션 타입별 상세 설명을 반환합니다.
+        /// </summary>
+        private string GetActionTypeDescription(MacroActionType actionType)
+        {
+            switch (actionType)
+            {
+                case MacroActionType.Default:
+                    return "기본 키 액션: 지정된 키를 한 번 입력합니다.\r\n\r\n"
+                         + "- 사용 예시: 단일 키 입력, 단축키 등\r\n"
+                         + "- 필요한 파라미터: 없음";
+                
+                case MacroActionType.Toggle:
+                    return "토글 키 액션: 키를 누르고 떼는 동작을 전환합니다.\r\n\r\n"
+                         + "- 첫 번째 호출: 키를 누른 상태 유지\r\n"
+                         + "- 두 번째 호출: 키를 뗌\r\n"
+                         + "- 사용 예시: Caps Lock, Num Lock 등의 토글 키\r\n"
+                         + "- 필요한 파라미터: 없음";
+                
+                case MacroActionType.Repeat:
+                    return "반복 키 액션: 지정된 키를 여러 번 반복해서 입력합니다.\r\n\r\n"
+                         + "- 사용 예시: 동일한 키를 여러 번 누르는 경우\r\n"
+                         + "- 필요한 파라미터: 반복 횟수 (1~100회)";
+                
+                case MacroActionType.Hold:
+                    return "홀드 키 액션: 지정된 키를 일정 시간 동안 누른 상태로 유지합니다.\r\n\r\n"
+                         + "- 사용 예시: 게임에서 달리기, 아이템 사용 등\r\n"
+                         + "- 필요한 파라미터: 유지 시간 (밀리초, 100~10000ms)";
+                
+                case MacroActionType.Turbo:
+                    return "터보 키 액션: 지정된 키를 빠르게 연타합니다.\r\n\r\n"
+                         + "- 사용 예시: 게임에서 빠른 공격, 연속 입력이 필요한 경우\r\n"
+                         + "- 필요한 파라미터: 입력 간격 (밀리초, 10~500ms)\r\n"
+                         + "- 기본 연타 횟수: 10회";
+                
+                case MacroActionType.Combo:
+                    return "콤보 키 액션: 여러 키를 순차적으로 입력합니다.\r\n\r\n"
+                         + "- 사용 예시: 게임 콤보 기술, 여러 단계의 단축키\r\n"
+                         + "- 필요한 파라미터: 키 사이 간격 (밀리초, 10~1000ms)\r\n"
+                         + "- 키 입력 형식: 쉼표(,)로 구분하여 입력";
+                
+                default:
+                    return "선택한 액션 타입에 대한 정보가 없습니다.";
+            }
+        }
+        
+        /// <summary>
+        /// 오른쪽 하단 패널 - 도움말 및 버튼 초기화
+        /// </summary>
+        private void InitializeHelpAndButtonPanel(GroupBox panel)
+        {
+            // 패널 내 레이아웃
+            TableLayoutPanel layout = new TableLayoutPanel();
+            layout.Dock = DockStyle.Fill;
+            layout.RowCount = 2;
+            layout.ColumnCount = 1;
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 70F));
+            layout.RowStyles.Add(new RowStyle(SizeType.Percent, 30F));
+            panel.Controls.Add(layout);
             
-            // 오디오 저장 버튼
-            btnSaveAudio = new Button();
-            btnSaveAudio.Text = "녹음된 오디오 저장";
-            btnSaveAudio.Location = new Point(20, 110);
-            btnSaveAudio.Size = new Size(360, 30);
-            btnSaveAudio.Enabled = false;
-            btnSaveAudio.Click += BtnSaveAudio_Click;
-            recordingGroup.Controls.Add(btnSaveAudio);
+            // 도움말 텍스트 영역
+            txtHelpInfo = new RichTextBox();
+            txtHelpInfo.Dock = DockStyle.Fill;
+            txtHelpInfo.BackColor = Color.LightYellow;
+            txtHelpInfo.ReadOnly = true;
+            txtHelpInfo.BorderStyle = BorderStyle.None;
+            txtHelpInfo.Font = new Font(this.Font.FontFamily, 9F);
+            txtHelpInfo.Text = "마우스를 컨트롤 위에 올리면 해당 기능에 대한 도움말이 여기에 표시됩니다.";
+            layout.Controls.Add(txtHelpInfo, 0, 0);
             
-            // 녹음 진행 막대
-            progressRecording = new ProgressBar();
-            progressRecording.Location = new Point(20, 150);
-            progressRecording.Size = new Size(360, 20);
-            progressRecording.Style = ProgressBarStyle.Continuous;
-            progressRecording.Minimum = 0;
-            progressRecording.Maximum = 100;
-            progressRecording.Value = 0;
-            recordingGroup.Controls.Add(progressRecording);
-            
-            // 진행 표시 레이블
-            Label lblProgress = new Label();
-            lblProgress.Text = "음성 레벨:";
-            lblProgress.Location = new Point(20, 175);
-            lblProgress.Size = new Size(80, 20);
-            recordingGroup.Controls.Add(lblProgress);
-            
-            // 탭 추가
-            tabControl.TabPages.Add(basicTabPage);
-            tabControl.TabPages.Add(advancedTabPage);
-            tabControl.TabPages.Add(voiceTabPage);
-            
-            // 폼에 탭 컨트롤 추가
-            this.Controls.Add(tabControl);
-            
-            // 버튼 패널
+            // 확인/취소 버튼 패널
             Panel buttonPanel = new Panel();
-            buttonPanel.Dock = DockStyle.Bottom;
-            buttonPanel.Height = 50;
-            this.Controls.Add(buttonPanel);
+            buttonPanel.Dock = DockStyle.Fill;
+            layout.Controls.Add(buttonPanel, 0, 1);
             
-            // OK 버튼
             Button btnOk = new Button();
             btnOk.Text = "확인";
-            btnOk.Location = new Point(550, 10);
-            btnOk.Size = new Size(80, 30);
+            btnOk.Location = new Point(buttonPanel.Width / 2 - 170, 20);
+            btnOk.Size = new Size(150, 40);
+            btnOk.BackColor = Color.LightGreen;
+            btnOk.FlatStyle = FlatStyle.Flat;
+            btnOk.Font = new Font(this.Font.FontFamily, 10F, FontStyle.Bold);
             btnOk.Click += (sender, e) =>
             {
+                if (string.IsNullOrWhiteSpace(txtKeyword.Text))
+                {
+                    MessageBox.Show("음성 명령어를 입력하세요.", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(txtAction.Text))
+                {
+                    MessageBox.Show("키 동작을 입력하세요.", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                Keyword = txtKeyword.Text.Trim();
+                KeyAction = txtAction.Text.Trim();
+                SelectedActionType = (MacroActionType)cmbActionType.SelectedIndex;
+                SelectedActionParam = (int)numActionParam.Value;
+                
                 this.DialogResult = DialogResult.OK;
                 this.Close();
             };
             buttonPanel.Controls.Add(btnOk);
+            formToolTip.SetToolTip(btnOk, "변경 사항을 저장하고 창을 닫습니다.");
             
-            // 취소 버튼
             Button btnCancel = new Button();
             btnCancel.Text = "취소";
-            btnCancel.Location = new Point(640, 10);
-            btnCancel.Size = new Size(80, 30);
+            btnCancel.Location = new Point(buttonPanel.Width / 2 + 20, 20);
+            btnCancel.Size = new Size(150, 40);
+            btnCancel.BackColor = Color.LightCoral;
+            btnCancel.FlatStyle = FlatStyle.Flat;
+            btnCancel.Font = new Font(this.Font.FontFamily, 10F, FontStyle.Bold);
             btnCancel.Click += (sender, e) =>
             {
                 this.DialogResult = DialogResult.Cancel;
                 this.Close();
             };
             buttonPanel.Controls.Add(btnCancel);
-        }
-
-        /// <summary>
-        /// 폼이 닫힐 때 호출되는 이벤트 핸들러입니다.
-        /// 사용 중인 리소스를 정리합니다.
-        /// </summary>
-        /// <param name="e">폼 닫기 이벤트 인자</param>
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            base.OnFormClosing(e);
+            formToolTip.SetToolTip(btnCancel, "변경 사항을 취소하고 창을 닫습니다.");
             
-            if (DialogResult == DialogResult.OK)
+            // 버튼 위치 조정을 위한 이벤트
+            buttonPanel.Resize += (sender, e) => 
             {
-                Keyword = txtKeyword.Text.Trim();
-                KeyAction = txtAction.Text.Trim();
-                
-                // DialogResult가 OK일 때만 MacroService로 전달할 액션 타입과 파라미터 저장
-                SelectedActionType = selectedActionType;
-                SelectedActionParam = selectedActionParam;
-            }
-            
-            // 폼이 닫힐 때 리소스 정리
-            try
-            {
-                // 녹음 중이면 녹음 중지
-                if (isRecording)
-                {
-                    isRecording = false;
-                    cancellationTokenSource?.Cancel();
-                }
-                
-                // 리소스 정리
-                cancellationTokenSource?.Cancel();
-                cancellationTokenSource?.Dispose();
-                audioRecorder?.Dispose();
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"폼 닫기 중 리소스 정리 오류: {ex.Message}");
-                // 예외가 발생해도 계속 진행
-            }
-        }
-
-        /// <summary>
-        /// 선택된 액션 타입을 가져옵니다.
-        /// </summary>
-        public MacroActionType SelectedActionType { get; private set; } = MacroActionType.Default;
-        
-        /// <summary>
-        /// 선택된 액션 파라미터를 가져옵니다.
-        /// </summary>
-        public int SelectedActionParam { get; private set; } = 0;
-        
-        /// <summary>
-        /// 원본 매크로 키워드를 가져옵니다. (편집 모드에서만 의미 있음)
-        /// </summary>
-        public string OriginalKeyword => originalKeyword;
-        
-        /// <summary>
-        /// 편집 모드인지 여부를 가져옵니다.
-        /// </summary>
-        public bool IsEditMode => isEditMode;
-
-        /// <summary>
-        /// 오디오 저장 버튼 클릭 이벤트 핸들러입니다.
-        /// 녹음된 오디오를 WAV 파일로 저장합니다.
-        /// </summary>
-        /// <param name="sender">이벤트 발생 객체</param>
-        /// <param name="e">이벤트 인자</param>
-        private async void BtnSaveAudio_Click(object sender, EventArgs e)
-        {
-            // 저장할 오디오 데이터 확인
-            if (lastRecordedAudio == null || lastRecordedAudio.Length == 0)
-            {
-                MessageBox.Show("저장할 녹음 데이터가 없습니다.", "알림", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            // 파일 저장 대화상자 표시
-            SaveFileDialog saveFileDialog = new SaveFileDialog();
-            saveFileDialog.Filter = "WAV 파일 (*.wav)|*.wav|모든 파일 (*.*)|*.*";
-            saveFileDialog.DefaultExt = "wav";
-            saveFileDialog.Title = "녹음 파일 저장";
-            saveFileDialog.FileName = $"녹음_{DateTime.Now:yyyyMMdd_HHmmss}.wav";
-
-            if (saveFileDialog.ShowDialog() == DialogResult.OK)
-            {
-                try
-                {
-                    // 오디오 파일 저장
-                    await SaveWavFileAsync(lastRecordedAudio, saveFileDialog.FileName);
-                    lblRecordingStatus.Text = "파일 저장 완료";
-                    MessageBox.Show($"파일이 저장되었습니다: {saveFileDialog.FileName}", "저장 완료", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"파일 저장 중 오류가 발생했습니다: {ex.Message}", "오류", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
-            }
-        }
-
-        /// <summary>
-        /// 오디오 데이터를 WAV 파일로 저장합니다.
-        /// </summary>
-        /// <param name="audioData">저장할 오디오 데이터</param>
-        /// <param name="filePath">저장할 파일 경로</param>
-        /// <returns>작업 완료를 나타내는 Task</returns>
-        private async Task SaveWavFileAsync(byte[] audioData, string filePath)
-        {
-            await Task.Run(() =>
-            {
-                try
-                {
-                    // 원본 데이터가 이미 WAV 포맷인지 확인
-                    if (IsWavFormat(audioData))
-                    {
-                        // 이미 WAV 형식이면 바로 저장
-                        File.WriteAllBytes(filePath, audioData);
-                    }
-                    else
-                    {
-                        // 오디오 데이터를 WAV 포맷으로 변환하여 저장
-                        using (MemoryStream sourceStream = new MemoryStream(audioData))
-                        using (WaveFileWriter waveWriter = new WaveFileWriter(filePath, new WaveFormat(16000, 16, 1)))
-                        {
-                            // 오디오 데이터를 WAV 형식으로 변환하여 저장
-                            byte[] buffer = new byte[4096];
-                            int bytesRead;
-                            
-                            sourceStream.Position = 0;
-                            while ((bytesRead = sourceStream.Read(buffer, 0, buffer.Length)) > 0)
-                            {
-                                waveWriter.Write(buffer, 0, bytesRead);
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"WAV 파일 저장 오류: {ex.Message}");
-                    throw; // 상위 catch 블록에서 처리하도록 예외 다시 throw
-                }
-            });
-        }
-
-        /// <summary>
-        /// 바이트 배열이 WAV 형식인지 확인합니다.
-        /// </summary>
-        /// <param name="data">확인할 바이트 배열</param>
-        /// <returns>WAV 형식이면 true, 아니면 false</returns>
-        private bool IsWavFormat(byte[] data)
-        {
-            // WAV 파일 헤더 확인 (RIFF + WAVE 시그니처)
-            if (data.Length < 12) return false;
-            
-            try
-            {
-                string signature = System.Text.Encoding.ASCII.GetString(data, 0, 4);
-                string format = System.Text.Encoding.ASCII.GetString(data, 8, 4);
-                
-                return signature == "RIFF" && format == "WAVE";
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// 인식된 음성 텍스트에서 핵심 키워드를 추출합니다.
-        /// </summary>
-        /// <param name="text">인식된 전체 텍스트</param>
-        /// <returns>추출된 키워드</returns>
-        private string ExtractKeyword(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-                return string.Empty;
-
-            // 문장 정리 (원본 보존)
-            string originalText = text;
-            text = text.Trim();
-            
-            // 문장 부호 제거
-            text = text.Replace(".", "").Replace(",", "").Replace("!", "").Replace("?", "");
-            
-            // 불필요한 대화체 표현 제거
-            string[] unnecessaryPhrases = new string[] 
-            { 
-                // 일반 간투사
-                "음", "그", "저", "어", "아", "이제", "이거", "저거", "그거",
-                
-                // 요청 표현
-                "해줘", "해 줘", "해주세요", "해 주세요", "부탁해", "부탁합니다", 
-                "실행", "실행해", "실행해줘", "실행 해줘", "실행해 줘", "실행 해 줘",
-                
-                // 매크로 관련 표현
-                "매크로", "매크로로", "기능", "기능을", "단축키", "단축키로",
-                "명령", "명령어", "로 설정", "설정해줘", "설정 해줘",
-                
-                // 추가 대화체
-                "좀", "잠깐", "지금", "빨리", "제발", "가능하면"
+                btnOk.Location = new Point(buttonPanel.Width / 2 - 170, 20);
+                btnCancel.Location = new Point(buttonPanel.Width / 2 + 20, 20);
             };
-            
-            // 정규 표현식에서 에러를 일으킬 수 있는 특수 문자 이스케이프
-            for (int i = 0; i < unnecessaryPhrases.Length; i++)
-            {
-                unnecessaryPhrases[i] = System.Text.RegularExpressions.Regex.Escape(unnecessaryPhrases[i]);
-            }
-            
-            // 불필요한 표현 제거
-            foreach (var phrase in unnecessaryPhrases)
-            {
-                // 단어 전체가 일치할 때만 공백으로 대체 (부분 일치 방지)
-                text = System.Text.RegularExpressions.Regex.Replace(
-                    text, 
-                    $@"\b{phrase}\b", 
-                    "", 
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
-                );
-            }
-            
-            // 한국어 조사 제거 (을/를, 이/가, 은/는 등)
-            string[] koreanParticles = new string[] 
-            {
-                "을", "를", "이", "가", "은", "는", "에", "에서", "로", "으로", 
-                "와", "과", "랑", "이랑", "하고", "에게", "한테", "께", "의"
-            };
-            
-            // 조사 제거
-            foreach (var particle in koreanParticles)
-            {
-                // 조사는 단어 뒤에 붙으므로 공백 또는 문장 끝 앞에 있을 때만 제거
-                text = System.Text.RegularExpressions.Regex.Replace(
-                    text, 
-                    $@"{particle}(\s|$)", 
-                    " ", 
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
-                );
-            }
-            
-            // 앞뒤 공백과 중복 공백 제거
-            text = System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
-            
-            // 일정 길이 이상이면 잘라내기
-            const int maxKeywordLength = 15;
-            if (text.Length > maxKeywordLength)
-            {
-                // 공백으로 분리하여 첫 몇 단어만 사용
-                string[] words = text.Split(' ');
-                text = string.Join(" ", words.Take(3)); // 최대 3개 단어만 사용
-                
-                // 여전히 길다면 그냥 잘라내기
-                if (text.Length > maxKeywordLength)
-                {
-                    text = text.Substring(0, maxKeywordLength);
-                }
-            }
-            
-            // 빈 문자열이 된 경우 원본 텍스트의 일부 반환
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                // 원본 텍스트에서 첫 단어 추출
-                string[] words = originalText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                if (words.Length > 0)
-                {
-                    // 첫 단어가 너무 길면 자르기
-                    string firstWord = words[0];
-                    if (firstWord.Length > maxKeywordLength)
-                    {
-                        firstWord = firstWord.Substring(0, maxKeywordLength);
-                    }
-                    return firstWord;
-                }
-                return originalText.Length > maxKeywordLength ? originalText.Substring(0, maxKeywordLength) : originalText;
-            }
-            
-            return text;
-        }
-
-        /// <summary>
-        /// 인식 결과를 사용자에게 표시합니다.
-        /// </summary>
-        /// <param name="recognizedText">인식된 텍스트</param>
-        private void ShowRecognitionResult(string recognizedText)
-        {
-            // 탭 컨트롤의 "음성 인식" 탭에서 "인식 결과" 레이블 찾기
-            foreach (Control control in this.Controls)
-            {
-                if (control is TabControl tabControl)
-                {
-                    foreach (TabPage page in tabControl.TabPages)
-                    {
-                        if (page.Text == "음성 인식")
-                        {
-                            foreach (Control pageControl in page.Controls)
-                            {
-                                if (pageControl is GroupBox groupBox && groupBox.Text == "음성 인식 결과")
-                                {
-                                    foreach (Control groupControl in groupBox.Controls)
-                                    {
-                                        if (groupControl is Label label && label.Name == "lblRecognitionResult")
-                                        {
-                                            label.Text = $"인식 결과: {recognizedText}";
-                                            
-                                            // "음성 인식" 탭으로 이동하여 결과 표시
-                                            tabControl.SelectedIndex = tabControl.TabPages.IndexOf(page);
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// 추출된 키워드를 사용자에게 표시합니다.
-        /// </summary>
-        /// <param name="keyword">추출된 키워드</param>
-        private void ShowExtractedKeyword(string keyword)
-        {
-            // 탭 컨트롤의 "음성 인식" 탭에서 "추출된 키워드" 레이블 찾기
-            foreach (Control control in this.Controls)
-            {
-                if (control is TabControl tabControl)
-                {
-                    foreach (TabPage page in tabControl.TabPages)
-                    {
-                        if (page.Text == "음성 인식")
-                        {
-                            foreach (Control pageControl in page.Controls)
-                            {
-                                if (pageControl is GroupBox groupBox && groupBox.Text == "음성 인식 결과")
-                                {
-                                    foreach (Control groupControl in groupBox.Controls)
-                                    {
-                                        if (groupControl is Label label && label.Name == "lblExtractedKeyword")
-                                        {
-                                            label.Text = $"추출된 키워드: {keyword}";
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// 인식 결과 및 키워드 레이블을 초기화합니다.
-        /// </summary>
-        private void ClearRecognitionLabels()
-        {
-            // 탭 컨트롤의 "음성 인식" 탭에서 결과 레이블들 초기화
-            foreach (Control control in this.Controls)
-            {
-                if (control is TabControl tabControl)
-                {
-                    foreach (TabPage page in tabControl.TabPages)
-                    {
-                        if (page.Text == "음성 인식")
-                        {
-                            foreach (Control pageControl in page.Controls)
-                            {
-                                if (pageControl is GroupBox groupBox && groupBox.Text == "음성 인식 결과")
-                                {
-                                    foreach (Control groupControl in groupBox.Controls)
-                                    {
-                                        if (groupControl is Label label)
-                                        {
-                                            if (label.Name == "lblRecognitionResult" || 
-                                                label.Name == "lblExtractedKeyword" || 
-                                                label.Name == "lblTransformation")
-                                            {
-                                                label.Text = "";
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
         
         /// <summary>
-        /// 음성에서 텍스트로의 변환 과정을 시각적으로 표시합니다.
+        /// 도움말 정보를 표시합니다.
         /// </summary>
-        /// <param name="originalText">원본 인식 텍스트</param>
-        /// <param name="extractedKeyword">추출된 키워드</param>
-        private void ShowTransformationProcess(string originalText, string extractedKeyword)
+        private void ShowHelp(string helpText)
         {
-            // 변환 과정 설명 (예: 단어 추출 등)
-            string explanation;
-            if (originalText.Equals(extractedKeyword, StringComparison.OrdinalIgnoreCase))
+            if (txtHelpInfo != null && !string.IsNullOrEmpty(helpText))
             {
-                explanation = "음성이 그대로 키워드로 사용됩니다.";
-            }
-            else if (originalText.Contains(" ") && originalText.Split(' ')[0].Equals(extractedKeyword, StringComparison.OrdinalIgnoreCase))
-            {
-                explanation = "첫 단어가 키워드로 추출되었습니다.";
-            }
-            else
-            {
-                explanation = "음성에서 핵심 키워드가 추출되었습니다.";
-            }
-            
-            // 탭 컨트롤의 "음성 인식" 탭에서 "변환 과정" 레이블 찾기
-            foreach (Control control in this.Controls)
-            {
-                if (control is TabControl tabControl)
-                {
-                    foreach (TabPage page in tabControl.TabPages)
-                    {
-                        if (page.Text == "음성 인식")
-                        {
-                            foreach (Control pageControl in page.Controls)
-                            {
-                                if (pageControl is GroupBox groupBox && groupBox.Text == "음성 인식 결과")
-                                {
-                                    foreach (Control groupControl in groupBox.Controls)
-                                    {
-                                        if (groupControl is Label label && label.Name == "lblTransformation")
-                                        {
-                                            label.Text = "« 변환 과정 » " + explanation;
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        /// <summary>
-        /// 음성 인식 예시를 표시합니다.
-        /// </summary>
-        private void ShowRecognitionExamples()
-        {
-            // 랜덤하게 예시 선택
-            string[] examples = new string[]
-            {
-                "« 음성 인식 예시 »\n" +
-                "- 명확한 단어 사용: \"엑셀 시작\", \"메모장 열기\"\n" +
-                "- 짧은 문장 사용: \"화면 캡처해\", \"음량 올려줘\"\n" +
-                "- 천천히 또박또박: 인식률이 높아집니다",
-                
-                "« 효과적인 음성 명령어 »\n" +
-                "- 단순 명령: \"창 닫기\", \"파일 저장\"\n" +
-                "- 앱 실행: \"브라우저 실행\", \"계산기 열기\"\n" +
-                "- 추가 팁: 주변 소음이 적을수록 정확합니다",
-                
-                "« 음성 인식 활용 팁 »\n" +
-                "- 자주 쓰는 단축키를 음성으로 설정해보세요\n" +
-                "- 특수문자보다 일반 단어가 인식이 잘 됩니다\n" +
-                "- 마이크와 입 사이 거리는 10-20cm 정도가 적합합니다"
-            };
-            
-            // 랜덤 인덱스 생성
-            Random random = new Random();
-            int index = random.Next(examples.Length);
-            
-            // 탭 컨트롤의 "음성 인식" 탭에서 예시 레이블 찾기
-            foreach (Control control in this.Controls)
-            {
-                if (control is TabControl tabControl)
-                {
-                    foreach (TabPage page in tabControl.TabPages)
-                    {
-                        if (page.Text == "음성 인식")
-                        {
-                            foreach (Control pageControl in page.Controls)
-                            {
-                                if (pageControl is GroupBox groupBox && groupBox.Text == "음성 인식 팁")
-                                {
-                                    foreach (Control groupControl in groupBox.Controls)
-                                    {
-                                        if (groupControl is Label label && label.Name == "lblExamples")
-                                        {
-                                            // 선택된 예시 표시
-                                            label.Text = examples[index];
-                                            return;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                txtHelpInfo.Text = helpText;
             }
         }
 
         /// <summary>
-        /// 음성 인식 팁 버튼을 추가합니다.
+        /// 키 액션 텍스트상자에 키를 추가합니다.
         /// </summary>
-        private void AddVoiceRecognitionTipButton()
+        private void AddKeyToAction(string key)
         {
-            Button btnTip = new Button();
-            btnTip.Text = "인식 팁";
-            btnTip.Location = new Point(230, 310);
-            btnTip.Size = new Size(80, 30);
-            btnTip.ForeColor = Color.Purple;
-            btnTip.Click += (sender, e) => 
+            // 기존에 다른 키가 있으면 + 기호로 연결, 아니면 새로 설정
+            if (!string.IsNullOrEmpty(txtAction.Text) && !txtAction.Text.EndsWith("+"))
             {
-                MessageBox.Show(
-                    "음성 인식 효율을 높이기 위한 팁:\n\n" +
-                    "1. 조용한 환경에서 녹음하세요.\n" +
-                    "2. 마이크에 가까이 대고 또박또박 말하세요.\n" +
-                    "3. 긴 문장보다 짧고 명확한 키워드를 사용하세요.\n" +
-                    "4. 비슷한 발음의 단어는 피하세요.\n" +
-                    "5. 음성 인식 실패 시 다른 단어로 시도해보세요.\n" +
-                    "6. 키워드로 추출된 단어가 적합하지 않다면 '키워드 복사' 버튼을 누른 후 직접 수정하세요.",
-                    "음성 인식 도움말",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information
-                );
-                
-                // 예시 새로고침
-                ShowRecognitionExamples();
-            };
-            
-            this.Controls.Add(btnTip);
-        }
-
-        /// <summary>
-        /// 액션 타입 선택 변경 시 이벤트 핸들러
-        /// </summary>
-        private void CmbActionType_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            // 선택된 인덱스에 따라 액션 타입 설정
-            selectedActionType = (MacroActionType)cmbActionType.SelectedIndex;
-            SelectedActionType = selectedActionType;
-            
-            // 액션 타입에 따라 파라미터 텍스트박스 활성화 및 기본값 설정
-            switch (selectedActionType)
-            {
-                case MacroActionType.Default:
-                    txtActionParam.Enabled = false;
-                    txtActionParam.Text = "0";
-                    UpdateActionParamDescription("파라미터가 필요하지 않습니다");
-                    break;
-                
-                case MacroActionType.Toggle:
-                    txtActionParam.Enabled = false;
-                    txtActionParam.Text = "0";
-                    UpdateActionParamDescription("파라미터가 필요하지 않습니다");
-                    break;
-                
-                case MacroActionType.Repeat:
-                    txtActionParam.Enabled = true;
-                    txtActionParam.Text = "3";
-                    UpdateActionParamDescription("반복 횟수 (기본값: 3회)");
-                    break;
-                
-                case MacroActionType.Hold:
-                    txtActionParam.Enabled = true;
-                    txtActionParam.Text = "1000";
-                    UpdateActionParamDescription("키 유지 시간 (밀리초, 기본값: 1000ms = 1초)");
-                    break;
-                
-                case MacroActionType.Turbo:
-                    txtActionParam.Enabled = true;
-                    txtActionParam.Text = "50";
-                    UpdateActionParamDescription("연타 간격 (밀리초, 기본값: 50ms)");
-                    break;
-                
-                case MacroActionType.Combo:
-                    txtActionParam.Enabled = true;
-                    txtActionParam.Text = "100";
-                    UpdateActionParamDescription("키 입력 간격 (밀리초, 기본값: 100ms)");
-                    break;
-            }
-            
-            // 키 동작 안내 레이블 업데이트
-            if (selectedActionType == MacroActionType.Combo)
-            {
-                UpdateKeyActionGuide("쉼표로 구분된 키 목록 입력 (예: CTRL+C, F5, ENTER)");
-            }
-            else
-            {
-                UpdateKeyActionGuide("예: CTRL+C, ALT+TAB, F5 등");
-            }
-        }
-        
-        /// <summary>
-        /// 액션 파라미터 텍스트 변경 시 이벤트 핸들러
-        /// </summary>
-        private void TxtActionParam_TextChanged(object sender, EventArgs e)
-        {
-            // 파라미터 값 유효성 검사 및 설정
-            if (int.TryParse(txtActionParam.Text, out int value))
-            {
-                selectedActionParam = value;
-                SelectedActionParam = value;
-            }
-            else
-            {
-                // 숫자가 아닌 경우 기본값으로 설정
-                if (string.IsNullOrWhiteSpace(txtActionParam.Text))
+                // 콤보 타입이면 쉼표로 구분
+                if ((MacroActionType)cmbActionType.SelectedIndex == MacroActionType.Combo)
                 {
-                    selectedActionParam = 0;
-                    SelectedActionParam = 0;
+                    txtAction.Text += ", " + key;
                 }
                 else
                 {
-                    // 유효한 숫자가 아닌 값이 입력된 경우 경고
-                    MessageBox.Show("숫자만 입력해주세요.", "입력 오류", 
-                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    
-                    // 액션 타입에 따른 기본값으로 복원
-                    switch (selectedActionType)
-                    {
-                        case MacroActionType.Repeat:
-                            txtActionParam.Text = "3";
-                            break;
-                        case MacroActionType.Hold:
-                            txtActionParam.Text = "1000";
-                            break;
-                        case MacroActionType.Turbo:
-                            txtActionParam.Text = "50";
-                            break;
-                        case MacroActionType.Combo:
-                            txtActionParam.Text = "100";
-                            break;
-                        default:
-                            txtActionParam.Text = "0";
-                            break;
-                    }
+                    // 이미 모디파이어 키가 선택되어 있는 상태면 "+"로 연결
+                    txtAction.Text += "+" + key;
                 }
-            }
-        }
-        
-        /// <summary>
-        /// 액션 파라미터 설명을 업데이트합니다.
-        /// </summary>
-        /// <param name="description">새 설명 텍스트</param>
-        private void UpdateActionParamDescription(string description)
-        {
-            foreach (Control control in this.Controls)
-            {
-                if (control is Label label && label.Location.Y == 165 && label.Location.X == 130)
-                {
-                    label.Text = description;
-                    return;
-                }
-            }
-        }
-        
-        /// <summary>
-        /// 키 동작 안내 텍스트를 업데이트합니다.
-        /// </summary>
-        /// <param name="guide">새 안내 텍스트</param>
-        private void UpdateKeyActionGuide(string guide)
-        {
-            foreach (Control control in this.Controls)
-            {
-                if (control is Label label && label.Location.Y == 85 && label.Location.X == 130)
-                {
-                    label.Text = guide;
-                    return;
-                }
-            }
-        }
-
-        /// <summary>
-        /// 키 버튼 클릭 이벤트 핸들러
-        /// </summary>
-        /// <param name="sender">이벤트 발생 객체</param>
-        /// <param name="e">이벤트 인자</param>
-        private void KeyButton_Click(object sender, EventArgs e)
-        {
-            Button button = sender as Button;
-            string keyCode = button.Tag.ToString();
-            
-            // 텍스트 상자에 키 코드 추가
-            // 커서 위치에 삽입 또는 선택된 텍스트 대체
-            if (txtAction.SelectionLength > 0)
-            {
-                txtAction.SelectedText = keyCode;
             }
             else
             {
-                txtAction.Text = txtAction.Text.Insert(txtAction.SelectionStart, keyCode);
-                txtAction.SelectionStart += keyCode.Length;
+                // 비어있거나 +로 끝나면 바로 추가
+                txtAction.Text += key;
+            }
+        }
+        
+        /// <summary>
+        /// 선택된 모디파이어 키에 따라 키 액션을 업데이트합니다.
+        /// </summary>
+        private void UpdateKeyAction()
+        {
+            // 기존 키 액션에서 모디파이어 부분을 제거
+            string originalAction = txtAction.Text;
+            string baseKey = originalAction;
+            
+            // 기존 모디파이어 키를 찾아 제거
+            if (originalAction.Contains("+"))
+            {
+                string[] parts = originalAction.Split('+');
+                baseKey = parts[parts.Length - 1];
+                
+                // 모든 모디파이어 제거
+                foreach (string modifier in new[] { "CTRL", "ALT", "SHIFT", "WIN" })
+                {
+                    baseKey = baseKey.Replace(modifier + "+", "");
+                }
             }
             
-            // 포커스 유지
-            txtAction.Focus();
+            // 새 모디파이어 키 조합 구성
+            string newAction = "";
+            if (isCtrlPressed) newAction += "CTRL+";
+            if (isAltPressed) newAction += "ALT+";
+            if (isShiftPressed) newAction += "SHIFT+";
+            if (isWinPressed) newAction += "WIN+";
+            
+            // 기본 키가 있으면 추가
+            if (!string.IsNullOrEmpty(baseKey))
+            {
+                newAction += baseKey;
+            }
+            
+            txtAction.Text = newAction;
+        }
+        
+        /// <summary>
+        /// 액션 타입 관련 컨트롤을 초기화합니다.
+        /// </summary>
+        private void InitializeActionTypes()
+        {
+            // cmbActionType이 null인지 확인
+            if (cmbActionType == null) return;
+            
+            // 콤보박스에 액션 타입 목록 추가
+            cmbActionType.Items.Clear();
+            cmbActionType.Items.Add("기본 (한 번 입력)");
+            cmbActionType.Items.Add("토글 (키 누르기/떼기 전환)");
+            cmbActionType.Items.Add("반복 (여러 번 입력)");
+            cmbActionType.Items.Add("홀드 (키 누르고 유지)");
+            cmbActionType.Items.Add("터보 (빠른 키 연타)");
+            cmbActionType.Items.Add("콤보 (키 순차 입력)");
+            
+            // 기본 선택
+            cmbActionType.SelectedIndex = (int)SelectedActionType;
+            
+            // 액션 타입 변경 이벤트 핸들러
+            cmbActionType.SelectedIndexChanged += (sender, e) => 
+            {
+                if (cmbActionType == null) return;
+                
+                MacroActionType selectedType = (MacroActionType)cmbActionType.SelectedIndex;
+                UpdateActionParamControl(selectedType);
+            };
+            
+            // 초기 파라미터 컨트롤 상태 설정
+            UpdateActionParamControl((MacroActionType)cmbActionType.SelectedIndex);
+        }
+        
+        /// <summary>
+        /// 선택된 액션 타입에 따라 파라미터 컨트롤을 업데이트합니다.
+        /// </summary>
+        private void UpdateActionParamControl(MacroActionType actionType)
+        {
+            // numActionParam이나 lblParamDescription이 null인지 확인
+            if (numActionParam == null || lblParamDescription == null) return;
+            
+            // 액션 타입에 따라 파라미터 설정 조정
+            switch (actionType)
+            {
+                case MacroActionType.Default:
+                    numActionParam.Enabled = false;
+                    numActionParam.Value = 0;
+                    lblParamDescription.Text = "파라미터 필요 없음";
+                    break;
+                
+                case MacroActionType.Toggle:
+                    numActionParam.Enabled = false;
+                    numActionParam.Value = 0;
+                    lblParamDescription.Text = "파라미터 필요 없음";
+                    break;
+                
+                case MacroActionType.Repeat:
+                    numActionParam.Enabled = true;
+                    numActionParam.Minimum = 1;
+                    numActionParam.Maximum = 100;
+                    numActionParam.Value = Math.Max(1, Math.Min(100, SelectedActionParam > 0 ? SelectedActionParam : 3));
+                    numActionParam.Increment = 1;
+                    lblParamDescription.Text = "반복 횟수";
+                    break;
+                
+                case MacroActionType.Hold:
+                    numActionParam.Enabled = true;
+                    numActionParam.Minimum = 100;
+                    numActionParam.Maximum = 10000;
+                    numActionParam.Value = Math.Max(100, Math.Min(10000, SelectedActionParam > 0 ? SelectedActionParam : 1000));
+                    numActionParam.Increment = 100;
+                    lblParamDescription.Text = "유지 시간 (밀리초)";
+                    break;
+                
+                case MacroActionType.Turbo:
+                    numActionParam.Enabled = true;
+                    numActionParam.Minimum = 10;
+                    numActionParam.Maximum = 500;
+                    numActionParam.Value = Math.Max(10, Math.Min(500, SelectedActionParam > 0 ? SelectedActionParam : 50));
+                    numActionParam.Increment = 10;
+                    lblParamDescription.Text = "입력 간격 (밀리초)";
+                    break;
+                
+                case MacroActionType.Combo:
+                    numActionParam.Enabled = true;
+                    numActionParam.Minimum = 10;
+                    numActionParam.Maximum = 1000;
+                    numActionParam.Value = Math.Max(10, Math.Min(1000, SelectedActionParam > 0 ? SelectedActionParam : 100));
+                    numActionParam.Increment = 10;
+                    lblParamDescription.Text = "키 간격 (밀리초)";
+                    break;
+            }
+        }
+        
+        /// <summary>
+        /// 키 액션 문자열을 파싱하여 UI 상태를 업데이트합니다.
+        /// </summary>
+        private void ParseKeyAction(string keyAction)
+        {
+            if (string.IsNullOrEmpty(keyAction)) return;
+            
+            // 모디파이어 키 상태 초기화
+            isCtrlPressed = keyAction.Contains("CTRL+");
+            isAltPressed = keyAction.Contains("ALT+");
+            isShiftPressed = keyAction.Contains("SHIFT+");
+            isWinPressed = keyAction.Contains("WIN+");
+            
+            // 버튼 상태 업데이트 - null 체크 추가
+            if (btnCtrl != null) btnCtrl.BackColor = isCtrlPressed ? Color.LightBlue : Color.WhiteSmoke;
+            if (btnAlt != null) btnAlt.BackColor = isAltPressed ? Color.LightGreen : Color.WhiteSmoke;
+            if (btnShift != null) btnShift.BackColor = isShiftPressed ? Color.LightCoral : Color.WhiteSmoke;
+            if (btnWin != null) btnWin.BackColor = isWinPressed ? Color.LightGoldenrodYellow : Color.WhiteSmoke;
+        }
+        
+        /// <summary>
+        /// 키 버튼 설정과 관련된 초기화를 수행합니다.
+        /// </summary>
+        private void SetupKeyButtons()
+        {
+            // 이 메서드는 더 이상 사용하지 않음 - 새 UI 레이아웃에서는 InitializeKeyModifierPanel에서 처리
+            // 단, 기존 코드와의 호환성을 위해 빈 메서드로 유지
+        }
+        
+        /// <summary>
+        /// 일반 키 메뉴를 표시합니다.
+        /// </summary>
+        private void ShowCommonKeysMenu()
+        {
+            // 이 메서드는 더 이상 사용하지 않음 - 새 UI 레이아웃에서는 키 버튼이 직접 FlowLayoutPanel에 추가됨
+            // 단, 기존 코드와의 호환성을 위해 빈 메서드로 유지
         }
     }
-} 
+}
